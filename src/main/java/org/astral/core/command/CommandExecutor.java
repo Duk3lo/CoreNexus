@@ -1,0 +1,72 @@
+package org.astral.core.command;
+
+import org.astral.core.logger.Core;
+import org.astral.core.logger.Log;
+
+import java.io.*;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
+import java.util.function.Function;
+
+public class CommandExecutor<T> {
+    private final List<String> command;
+    private final File directory;
+    private Process process;
+
+    public CommandExecutor(List<String> command, File directory){
+        this.command = command;
+        this.directory = directory;
+    }
+
+    public void run(Function<String, T> parser, Consumer<T> callback){
+        try {
+            ProcessBuilder pb = new ProcessBuilder(command);
+            pb.directory(directory);
+            this.process = pb.start();
+
+            Thread readerThread = new Thread(()->{
+                try(BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))){
+                    String line;
+                    while ((line = reader.readLine()) != null){
+                        T result = parser.apply(line);
+                        callback.accept(result);
+                    }
+                } catch (IOException _) {}
+            });
+            readerThread.setName("Process-Reader");
+            readerThread.start();
+            CommandTerminal.getInstance().connectProcess(this.process);
+
+        }catch (IOException e) {
+            Core.atError(Log.SYSTEM).log("Error fatal al iniciar el proceso, " + e);
+        }
+    }
+
+    public Process getProcess(){
+        return process;
+    }
+
+    public void stop() {
+        if (process != null && process.isAlive()) {
+            try {
+                PrintWriter writer = new PrintWriter(new OutputStreamWriter(process.getOutputStream()), true);
+
+                Core.atInfo(Log.SERVER).log("Enviando comando 'stop' al servidor...");
+                writer.println("stop");
+                if (process.waitFor(15, TimeUnit.SECONDS)) {
+                    Core.atInfo(Log.SERVER).log("El servidor se cerró limpiamente.");
+                } else {
+                    Core.atWarning(Log.SERVER).log("El servidor no respondió al 'stop'. Forzando cierre...");
+                    process.destroyForcibly();
+                }
+            } catch (InterruptedException e) {
+                Core.atError(Log.SYSTEM).log("Error durante el apagado: " + e.getMessage());
+                process.destroyForcibly();
+            } finally {
+                CommandTerminal.getInstance().disconnectProcess();
+            }
+        }
+    }
+
+}
