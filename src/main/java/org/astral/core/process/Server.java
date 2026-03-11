@@ -13,10 +13,6 @@ public final class Server {
     private static Server instance = null;
     private final CommandExecutor<String> executor;
 
-    private final File directory;
-    private final String jarName;
-    private final String args;
-
     public static void startServer(String path, String jar, String args) {
         if (path == null || path.trim().isEmpty()) {
             Core.atError(Log.SERVER).log("No se puede iniciar el servidor: La ruta está vacía en la configuración.");
@@ -44,9 +40,6 @@ public final class Server {
     }
 
     private Server(File directory, String jarName, String args) {
-        this.directory = directory;
-        this.jarName = jarName;
-        this.args = args;
 
         List<String> cmd = new ArrayList<>();
         cmd.add("java");
@@ -64,18 +57,6 @@ public final class Server {
 
         this.executor = new CommandExecutor<>(cmd, directory);
         this.executor.run(line -> line, line -> Core.atInfo(Log.SERVER).log(line));
-    }
-
-    public File getDirectory() {
-        return directory;
-    }
-
-    public String getJarName() {
-        return jarName;
-    }
-
-    public String getArgs() {
-        return args;
     }
 
     public void stopServer() {

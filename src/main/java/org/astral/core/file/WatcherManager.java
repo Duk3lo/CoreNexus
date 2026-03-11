@@ -22,6 +22,11 @@ public class WatcherManager {
     }
 
     public void addWatcher(NexusConfig.@NotNull Watcher config) {
+
+        if (!config.enable) {
+            return;
+        }
+
         if (config.path == null || config.path.trim().isEmpty()) {
             Core.atWarning(Log.WATCHER).log("Ruta de origen vacía en la configuración. Ignorado.");
             return;
@@ -53,6 +58,21 @@ public class WatcherManager {
                 Core.atWarning(Log.WATCHER).log("No se pudo iniciar Sync: La ruta destino no existe físicamente.");
             }
         }
+    }
+
+    public void removeWatcher(String pathStr) {
+        Path p = Path.of(pathStr).toAbsolutePath().normalize();
+        DirectoryWatcher dw = watchers.remove(p);
+        if (dw != null) {
+            dw.stop();
+            Core.atInfo(Log.WATCHER).log("Vigilante en " + pathStr + " detenido con éxito.");
+        }
+    }
+
+    public DirectoryWatcher getWatcher(NexusConfig.Watcher config) {
+        if (config == null || config.path == null) return null;
+        Path sourcePath = Path.of(config.path).toAbsolutePath().normalize();
+        return watchers.get(sourcePath);
     }
 
     public void stopAll() {

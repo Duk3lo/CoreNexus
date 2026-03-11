@@ -17,7 +17,7 @@ import java.util.stream.Stream;
 
 public final class WorkspaceSetup {
 
-    private static final String DefaultPrefix = "Default";
+    private static final String DefaultWatchPrefix = "Default";
 
     private static Path workspacePath;
     private static Path localModsPath;
@@ -63,42 +63,50 @@ public final class WorkspaceSetup {
         nexus = new ConfigService<>(NexusConfig.class, "config.yml", NexusConfig::new, workspacePath);
         nexus.load();
 
-        NexusConfig cfg = nexus.getConfig();
-        boolean autoUpdated = false;
-
-        // Si el usuario definió un server_path (o se autodetectó)
-        if (cfg.server_path != null && !cfg.server_path.isEmpty()) {
-
-            // 1. Auto-detectar JAR si está vacío o es el por defecto y no existe
-            if (cfg.jar_name == null || cfg.jar_name.isEmpty() || cfg.jar_name.equals("HytaleServer.jar")) {
-                String detectedJar = tryAutoDetectJar(cfg.server_path);
-                if (!detectedJar.isEmpty() && !detectedJar.equals(cfg.jar_name)) {
-                    cfg.jar_name = detectedJar;
-                    autoUpdated = true;
-                }
-            }
-
-            // 2. Auto-detectar path_destination para los watchers
-            for (NexusConfig.Watcher w : cfg.watchers.values()) {
-                // Si el destino está vacío, intentamos encontrar la carpeta /mods dentro del server_path
-                if (w.path_destination == null || w.path_destination.isEmpty()) {
-                    String detectedMods = tryAutoDetectModsServer(cfg.server_path);
-                    if (!detectedMods.isEmpty()) {
-                        w.path_destination = detectedMods;
-                        autoUpdated = true;
-                    }
-                }
-            }
-        }
-
-        // Si hubo cambios automáticos, guardamos el YML actualizado para que el usuario lo vea
-        if (autoUpdated) {
+        // Ahora el método no necesita parámetros, usa la instancia interna 'nexus'
+        if (applyAutoDetection()) {
             nexus.save();
             Core.atInfo(Log.CONFIG).log("Configuración completada automáticamente basándose en server_path.");
         }
 
         curseForge = new ConfigService<>(CurseForgeConfig.class, "curseforge.yml", CurseForgeConfig::new, curseForgePath);
         curseForge.load();
+    }
+
+    public static boolean applyAutoDetection() {
+        if (nexus == null || nexus.getConfig() == null) return false;
+        NexusConfig cfg = nexus.getConfig();
+        if (cfg.server_path == null || cfg.server_path.isEmpty()) return false;
+        boolean modified = false;
+        Path serverPath = Path.of(cfg.server_path);
+        if (!hasServerJar(serverPath)) {
+            Path subServer = serverPath.resolve("Server");
+            if (hasServerJar(subServer)) {
+                cfg.server_path = subServer.toAbsolutePath().toString();
+                serverPath = subServer; // <-- Ahora SÍ se usa para los siguientes pasos
+                modified = true;
+                Core.atInfo(Log.CONFIG).log("Ruta de servidor ajustada a subcarpeta: " + cfg.server_path);
+            }
+        }
+        if (cfg.jar_name == null || cfg.jar_name.isEmpty() || cfg.jar_name.equals("HytaleServer.jar")) {
+            String detectedJar = tryAutoDetectJar(serverPath.toString());
+            if (!detectedJar.isEmpty() && !detectedJar.equals(cfg.jar_name)) {
+                cfg.jar_name = detectedJar;
+                modified = true;
+            }
+        }
+        NexusConfig.Watcher w = cfg.watchers.get(DefaultWatchPrefix);
+        if (w != null) {
+            if (w.path_destination == null || w.path_destination.isEmpty()) {
+                String detectedMods = tryAutoDetectModsServer(serverPath.toString());
+                if (!detectedMods.isEmpty()) {
+                    w.path_destination = detectedMods;
+                    modified = true;
+                }
+            }
+        }
+
+        return modified;
     }
 
     private static void createHierarchy() {
@@ -131,23 +139,6 @@ public final class WorkspaceSetup {
     }
     //public static Path getWorkspacePath() { return workspacePath; }
 
-    public static @NotNull String tryAutoDetectPathServer() {
-        Path current = getExecutionPath();
-        if (hasServerJar(current)) return current.toAbsolutePath().toString();
-        Path subServer = current.resolve("Server");
-        if (hasServerJar(subServer)) return subServer.toAbsolutePath().toString();
-        Path parent = current.getParent();
-        if (hasServerJar(parent)) return parent.toAbsolutePath().toString();
-        return "";
-    }
-
-    // Versión mejorada que acepta una ruta específica
-    public static @NotNull String tryAutoDetectModsServer(String specificPath) {
-        if (specificPath == null || specificPath.isEmpty()) return "";
-
-        Path mods = Path.of(specificPath).resolve("mods");
-        return (Files.exists(mods) && Files.isDirectory(mods)) ? mods.toAbsolutePath().toString() : "";
-    }
 
     public static String tryAutoDetectJar(String specificPath) {
         if (specificPath == null || specificPath.isEmpty()) return "";
@@ -179,17 +170,16 @@ public final class WorkspaceSetup {
         }
     }
 
-    private static Path getExecutionPath() {
-        try {
-            File sourceFile = new File(Main.class.getProtectionDomain().getCodeSource().getLocation().toURI());
-            return sourceFile.isDirectory() ? sourceFile.toPath() : sourceFile.getParentFile().toPath();
-        } catch (Exception e) {
-            return Path.of("").toAbsolutePath();
-        }
+    public static @NotNull String tryAutoDetectModsServer(String specificPath) {
+        if (specificPath == null || specificPath.isEmpty()) return "";
+        Path modsFolder = Path.of(specificPath).resolve("mods");
+        return (Files.exists(modsFolder) && Files.isDirectory(modsFolder))
+                ? modsFolder.toAbsolutePath().toString()
+                : "";
     }
 
 
-    public static String getDefaultPrefix() {
-        return DefaultPrefix;
+    public static String getDefaultWatchPrefix() {
+        return DefaultWatchPrefix;
     }
 }

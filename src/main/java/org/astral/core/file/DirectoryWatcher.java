@@ -11,6 +11,7 @@ import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.stream.Stream;
 
 public class DirectoryWatcher {
     private final Path directory;
@@ -57,26 +58,86 @@ public class DirectoryWatcher {
 
         // --- INFO DE INICIO DETALLADA ---
         Core.atInfo(Log.WATCHER, folderName).log("Vigilante [" + threadName + "] en línea.");
-        Core.atInfo(Log.WATCHER, folderName).log("  -> Ruta: " + directory);
-        if (config.path_sync && targetDirectory != null) {
-            Core.atInfo(Log.WATCHER, folderName).log("  -> Sincronizando con: " + targetDirectory);
+        Core.atInfo(Log.WATCHER, folderName).log("  -> Origen:  " + directory);
+
+        // Mostramos el destino siempre que exista en la configuración
+        if (targetDirectory != null) {
+            String syncType = config.path_sync ? " (Sincronización Activa)" : " (Solo Envío)";
+            Core.atInfo(Log.WATCHER, folderName).log("  -> Destino: " + targetDirectory + syncType);
+
+
+        } else {
+            Core.atInfo(Log.WATCHER, folderName).log("  -> Destino: NO CONFIGURADO");
         }
+
         Core.atInfo(Log.WATCHER, folderName).log("---------------------------------------------------------");
 
         // --- LISTADO INICIAL DE CONTENIDO ---
+        boolean hasFiles = false;
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(directory)) {
             for (Path entry : stream) {
+                if (!hasFiles) {
+                    Core.atInfo(Log.WATCHER, folderName).log("Contenido actual de la carpeta:");
+                    hasFiles = true;
+                }
                 String type = Files.isDirectory(entry) ? "DIR " : "FILE";
                 long size = getRealSize(entry);
                 Core.atInfo(Log.WATCHER, folderName).log(String.format("  -> [%s] %-25s | %s",
                         type, entry.getFileName(), formatSize(size)));
             }
         } catch (IOException ignored) {}
+
+        // Si la carpeta estaba vacía, ponemos un aviso en lugar de solo la línea
+        if (!hasFiles) {
+            Core.atInfo(Log.WATCHER, folderName).log("  (Carpeta de origen vacía)");
+        }
+
         Core.atInfo(Log.WATCHER, folderName).log("---------------------------------------------------------");
 
         watcherThread = new Thread(this::watchLoop, threadName);
         watcherThread.setDaemon(true);
         watcherThread.start();
+    }
+
+    public void performInitialSync(boolean clean, boolean sync) {
+        if (!Files.exists(directory) || targetDirectory == null || !Files.exists(targetDirectory)) {
+            Core.atWarning(Log.WATCHER, folderName).log("  [Aviso] Sincronización inicial cancelada: Origen o Destino no existen.");
+            return;
+        }
+        try {
+            if (clean) {
+                Core.atInfo(Log.WATCHER, folderName).log("  [Limpieza] Vaciando carpeta destino...");
+                try (Stream<Path> paths = Files.walk(targetDirectory)) {
+                    paths.filter(p -> !p.equals(targetDirectory))
+                            .sorted(Comparator.reverseOrder()) // Borra archivos primero, luego carpetas
+                            .forEach(p -> {
+                                try { Files.delete(p); } catch (IOException ignored) {}
+                            });
+                }
+            }
+            if (sync) {
+                Core.atInfo(Log.WATCHER, folderName).log("  [Sync] Copiando archivos iniciales...");
+                try (Stream<Path> paths = Files.walk(directory)) {
+                    paths.forEach(source -> {
+                        try {
+                            Path relative = directory.relativize(source);
+                            Path destination = targetDirectory.resolve(relative);
+
+                            if (Files.isDirectory(source)) {
+                                if (!Files.exists(destination)) Files.createDirectories(destination);
+                            } else {
+                                Files.copy(source, destination, StandardCopyOption.REPLACE_EXISTING);
+                            }
+                        } catch (IOException e) {
+                            Core.atWarning(Log.WATCHER, folderName).log("Fallo al copiar: " + source.getFileName());
+                        }
+                    });
+                }
+                Core.atInfo(Log.WATCHER, folderName).log("  [Sync] Sincronización inicial completada.");
+            }
+        } catch (IOException e) {
+            Core.atError(Log.WATCHER, folderName).log("Error crítico en fase inicial: " + e.getMessage());
+        }
     }
 
     private void watchLoop() {
@@ -145,7 +206,7 @@ public class DirectoryWatcher {
                 Path targetFile = targetDirectory.resolve(relativePath);
                 try {
                     if (Files.exists(targetFile)) {
-                        if (relativePath.toString().endsWith(config.ApplyActionsOnly) && config.path_safe_delete) {
+                        if (relativePath.toString().endsWith(config.apply_Actions_Only) && config.path_safe_delete) {
                             performSafeDeleteAction(targetFile);
                         } else {
                             Files.deleteIfExists(targetFile);
@@ -175,7 +236,7 @@ public class DirectoryWatcher {
             Path parentDir = targetPath.getParent();
             if (parentDir != null && !Files.exists(parentDir)) Files.createDirectories(parentDir);
 
-            if (filePath.getFileName().toString().endsWith(config.ApplyActionsOnly)) {
+            if (filePath.getFileName().toString().endsWith(config.apply_Actions_Only)) {
                 for (NexusConfig.ActionType action : config.actions) {
                     performAction(action, filePath, targetPath);
                 }
