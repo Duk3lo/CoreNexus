@@ -39,15 +39,12 @@ public final class Core {
             String suffix = isUpdate ? "" : "\n";
 
             String fullLabel = (subContext == null) ? context.label : context.label + ":" + subContext;
-
-            // Determinar color del nivel (INFO/WARN/ERROR)
             Color levelColor = switch (level) {
                 case "ERROR" -> Color.RED;
                 case "WARN" -> Color.YELLOW;
                 default -> context.color;
             };
 
-            // Convertimos los objetos java.awt.Color a Strings ANSI
             String contextAnsi = toAnsi(context.color);
             String levelAnsi = toAnsi(levelColor);
 

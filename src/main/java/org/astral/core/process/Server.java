@@ -1,6 +1,7 @@
 package org.astral.core.process;
 
 import org.astral.core.command.CommandExecutor;
+import org.astral.core.healing.HealthMonitor;
 import org.astral.core.logger.Core;
 import org.astral.core.logger.Log;
 
@@ -56,7 +57,15 @@ public final class Server {
         }
 
         this.executor = new CommandExecutor<>(cmd, directory);
-        this.executor.run(line -> line, line -> Core.atInfo(Log.SERVER).log(line));
+        this.executor.run(line -> line, line -> {
+            Core.atInfo(Log.SERVER).log(line);
+            HealthMonitor.getInstance().processServerLog(line);
+        });
+        HealthMonitor.getInstance().notifyServerStarted();
+    }
+
+    public CommandExecutor<String> getExecutor() {
+        return executor;
     }
 
     public void stopServer() {

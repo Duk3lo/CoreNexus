@@ -3,6 +3,8 @@ package org.astral.core.file;
 import org.astral.core.config.nexus.NexusConfig;
 import org.astral.core.logger.Core;
 import org.astral.core.logger.Log;
+
+import org.astral.core.setup.WorkspaceSetup;
 import org.jetbrains.annotations.NotNull;
 
 import java.nio.file.Files;
@@ -32,7 +34,7 @@ public class WatcherManager {
             return;
         }
 
-        Path sourcePath = Path.of(config.path).toAbsolutePath().normalize();
+        Path sourcePath = WorkspaceSetup.resolve(config.path);
 
         if (Files.exists(sourcePath)) {
             watchers.computeIfAbsent(sourcePath, k -> {
@@ -45,7 +47,7 @@ public class WatcherManager {
             Core.atError(Log.WATCHER).log("La ruta de origen no existe: " + sourcePath);
         }
         if (config.path_sync && config.path_destination != null && !config.path_destination.trim().isEmpty()) {
-            Path destPath = Path.of(config.path_destination).toAbsolutePath().normalize();
+            Path destPath = WorkspaceSetup.resolve(config.path_destination);
 
             if (Files.exists(destPath)) {
                 watchers.computeIfAbsent(destPath, k -> {

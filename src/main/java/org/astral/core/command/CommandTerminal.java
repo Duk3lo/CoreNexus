@@ -1,8 +1,10 @@
 package org.astral.core.command;
 
 import org.astral.core.config.ConfigService;
+import org.astral.core.config.nexus.HealingConfig;
 import org.astral.core.config.nexus.NexusConfig;
 import org.astral.core.file.WatcherManager;
+import org.astral.core.healing.HealthMonitor;
 import org.astral.core.logger.Core;
 import org.astral.core.logger.Log;
 import org.astral.core.process.Server;
@@ -56,7 +58,7 @@ public class CommandTerminal {
     }
 
     private void handleCoreCommand(@NotNull String input) {
-        String[] parts = input.split("\\s+", 3); // Dividimos hasta en 3 partes
+        String[] parts = input.split("\\s+", 3);
         String command = parts[0].toLowerCase();
         String subCommand = parts.length > 1 ? parts[1].toLowerCase() : "";
         String extraArgs = parts.length > 2 ? parts[2] : "";
@@ -65,10 +67,14 @@ public class CommandTerminal {
         NexusConfig cfg = nexus.getConfig();
 
         switch (command) {
+            case "core-health" -> handleHealthCommand(subCommand, extraArgs);
+
+            case "core-github" -> handleGitHubCommand(subCommand, extraArgs);
+
             case "core-watcher" -> handleWatcherCommand(subCommand, extraArgs, nexus);
 
             case "core-setpathserver" -> {
-                if (subCommand.isEmpty()) { // Aquí subCommand actúa como el primer argumento
+                if (subCommand.isEmpty()) {
                     Core.atWarning(Log.CONFIG).log("Uso: Core-SetPathServer <ruta>");
                     return;
                 }
@@ -109,6 +115,76 @@ public class CommandTerminal {
         }
     }
 
+    private void handleHealthCommand(@NotNull String sub, String args) {
+        switch (sub) {
+            case "status", "" -> HealthMonitor.getInstance().printHealthStatus();
+            case "enable" -> {
+                if (args.isEmpty()) {
+                    Core.atWarning(Log.HEALTH).log("Uso: core-health enable <true/false>");
+                    return;
+                }
+                boolean state = Boolean.parseBoolean(args.split("\\s+")[0]);
+                HealingConfig config = WorkspaceSetup.getHealing().getConfig();
+                if (config != null) {
+                    config.enable = state;
+                    WorkspaceSetup.getHealing().save();
+                    if (state) {
+                        HealthMonitor.getInstance().start();
+                        Core.atInfo(Log.HEALTH).log("Monitor encendido y configuración guardada.");
+                    } else {
+                        HealthMonitor.getInstance().stop();
+                        Core.atInfo(Log.HEALTH).log("Monitor apagado y configuración guardada.");
+                    }
+                }
+            }
+            default -> Core.atInfo(Log.HEALTH).log("Sub-comandos de Health: status, enable <true/false>");
+        }
+    }
+
+    private void handleGitHubCommand(@NotNull String sub, String args) {
+        switch (sub) {
+            case "sync-all" -> {
+                Core.atInfo(Log.GITHUB).log("Forzando sincronización de todos los repositorios...");
+                org.astral.core.github.GItHubApi.getInstance().syncAll();
+            }
+            case "sync" -> {
+                if (args.isEmpty()) {
+                    Core.atWarning(Log.GITHUB).log("Uso: core-github sync <nombre_en_yml>");
+                    return;
+                }
+                String repoKey = args.split("\\s+")[0];
+                Core.atInfo(Log.GITHUB).log("Sincronizando el repositorio: " + repoKey);
+                org.astral.core.github.GItHubApi.getInstance().syncRepo(repoKey);
+            }
+            case "add" -> {
+                if (!args.contains("/")) {
+                    Core.atWarning(Log.GITHUB).log("Uso correcto: core-github add <usuario/repositorio>");
+                    return;
+                }
+                String repoSlug = args.split("\\s+")[0];
+                String key = repoSlug.substring(repoSlug.lastIndexOf("/") + 1);
+
+                org.astral.core.config.github.GitHubConfig githubCfg = WorkspaceSetup.getGithub().getConfig();
+                if (githubCfg == null) return;
+                if (githubCfg.resources.containsKey(key)) {
+                    Core.atWarning(Log.GITHUB).log("El repositorio '" + key + "' ya existe en tu configuración.");
+                    return;
+                }
+                org.astral.core.config.github.GitHubConfig.RepositoryResource newResource =
+                        org.astral.core.config.github.GitHubConfig.createResource(
+                                repoSlug,
+                                WorkspaceSetup.relativize(WorkspaceSetup.getLocalModsPath())
+                        );
+                githubCfg.resources.put(key, newResource);
+                WorkspaceSetup.getGithub().save();
+
+                Core.atInfo(Log.GITHUB).log("✅ Repositorio '" + repoSlug + "' agregado exitosamente.");
+                Core.atInfo(Log.GITHUB).log("Tip: Usa 'core-github sync " + key + "' para descargarlo ahora mismo.");
+            }
+            default -> Core.atInfo(Log.GITHUB).log("Sub-comandos de GitHub: sync-all, sync <nombre>, add <usuario/repo>");
+        }
+    }
+
     private void handleWatcherCommand(@NotNull String sub, String args, @NotNull ConfigService<NexusConfig> nexus) {
         NexusConfig cfg = nexus.getConfig();
 
@@ -126,7 +202,7 @@ public class CommandTerminal {
                 NexusConfig.Watcher w = cfg.watchers.get(name);
                 if (w != null) {
                     w.enable = state;
-                    nexus.save(); // Guardamos el cambio en el YAML
+                    nexus.save();
                     Core.atInfo(Log.WATCHER).log("Watcher '" + name + "' marcado como " + (state ? "ON" : "OFF"));
                     if (state) {
                         WatcherManager.getInstance().addWatcher(w);
@@ -140,7 +216,6 @@ public class CommandTerminal {
                     Core.atError(Log.WATCHER).log("No existe el watcher: " + name);
                 }
             }
-
             case "list" -> {
                 Core.atInfo(Log.WATCHER).log("--- Lista de Watchers Registrados ---");
                 if (cfg.watchers.isEmpty()) {
@@ -148,30 +223,22 @@ public class CommandTerminal {
                 } else {
                     cfg.watchers.forEach((name, w) -> {
                         String status = w.enable ? "✅ [ACTIVO]  " : "❌ [APAGADO] ";
-
-                        // Log principal con nombre y estado
                         Core.atInfo(Log.WATCHER).log(status + "Nombre: " + name);
-
-                        // Detalles de rutas (con sangría para que se vea ordenado)
                         Core.atInfo(Log.WATCHER).log("     |-- Origen:  " + w.path);
-
                         String dest = (w.path_destination == null || w.path_destination.isEmpty())
                                 ? "NO DEFINIDA (Auto-detectar)"
                                 : w.path_destination;
                         Core.atInfo(Log.WATCHER).log("     |-- Destino: " + dest);
-
-                        // Opcional: mostrar si la sincronización bidireccional está activa
                         if (w.path_sync) {
                             Core.atInfo(Log.WATCHER).log("     |-- Modo:    Sincronización Bidireccional (Espejo)");
                         }
-
                         Core.atInfo(Log.WATCHER).log("     ---------------------------------------------------");
                     });
                 }
             }
             case "add" -> {
                 if (args.isEmpty()) {
-                    Core.atWarning(Log.WATCHER).log("Uso: core-watcher add <nombre> <ruta_destino>");
+                    Core.atWarning(Log.WATCHER).log("Uso: core-watcher add <nombre> <ruta>");
                     return;
                 }
                 String[] subParts = args.split("\\s+", 2);
@@ -183,8 +250,8 @@ public class CommandTerminal {
                 String destination = subParts[1];
 
                 NexusConfig.Watcher newWatcher = NexusConfig.createWatcher(
-                        WorkspaceSetup.getLocalModsPath().toString(),
                         destination,
+                        WorkspaceSetup.relativize(WorkspaceSetup.getLocalModsPath()),
                         true
                 );
                 cfg.watchers.put(name, newWatcher);
@@ -223,6 +290,7 @@ public class CommandTerminal {
 
     private void shutdownSystem() {
         Core.atWarning(Log.SYSTEM).log("Cerrando aplicación completa...");
+        HealthMonitor.getInstance().stop();
         if (Server.getInstance() != null) Server.getInstance().stopServer();
         if (WatcherManager.getInstance() != null) WatcherManager.getInstance().stopAll();
         System.exit(0);

@@ -12,6 +12,7 @@ repositories {
 dependencies {
     compileOnly("org.jetbrains:annotations:26.0.2")
     implementation("org.yaml:snakeyaml:2.2")
+    implementation("org.kohsuke:github-api:1.327")
     testImplementation(platform("org.junit:junit-bom:5.10.0"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")

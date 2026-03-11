@@ -3,6 +3,8 @@ package org.astral.core.setup;
 import org.astral.core.Main;
 import org.astral.core.config.ConfigService;
 import org.astral.core.config.curseforge.CurseForgeConfig;
+import org.astral.core.config.github.GitHubConfig;
+import org.astral.core.config.nexus.HealingConfig;
 import org.astral.core.config.nexus.NexusConfig;
 import org.astral.core.logger.Core;
 import org.astral.core.logger.Log;
@@ -17,15 +19,20 @@ import java.util.stream.Stream;
 
 public final class WorkspaceSetup {
 
-    private static final String DefaultWatchPrefix = "Default";
+    private static final String DefaultWatchPrefix = "_Default_";
+    private static final String DefaultGitHubPrefix = "_example_";
 
     private static Path workspacePath;
     private static Path localModsPath;
     private static Path curseForgePath;
     private static Path githubPath;
+    private static Path githubDownloadsPath;
+    private static Path githubBackupPath;
 
     private static ConfigService<NexusConfig> nexus;
     private static ConfigService<CurseForgeConfig> curseForge;
+    private static ConfigService<GitHubConfig> github;
+    private static ConfigService<HealingConfig> healing;
 
 
     public static void init() {
@@ -57,20 +64,25 @@ public final class WorkspaceSetup {
         localModsPath = workspacePath.resolve("SyncMods");
         curseForgePath = workspacePath.resolve("CurseForge");
         githubPath = workspacePath.resolve("GitHub");
+        githubDownloadsPath = githubPath.resolve("Downloads");
+        githubBackupPath = githubPath.resolve("Backup");
     }
 
     private static void loadConfigs() {
         nexus = new ConfigService<>(NexusConfig.class, "config.yml", NexusConfig::new, workspacePath);
         nexus.load();
-
-        // Ahora el método no necesita parámetros, usa la instancia interna 'nexus'
         if (applyAutoDetection()) {
             nexus.save();
             Core.atInfo(Log.CONFIG).log("Configuración completada automáticamente basándose en server_path.");
         }
-
         curseForge = new ConfigService<>(CurseForgeConfig.class, "curseforge.yml", CurseForgeConfig::new, curseForgePath);
         curseForge.load();
+
+        github = new ConfigService<>(GitHubConfig.class, "github.yml", GitHubConfig::new, githubPath);
+        github.load();
+
+        healing = new ConfigService<>(HealingConfig.class, "healing.yml", HealingConfig::new, workspacePath);
+        healing.load();
     }
 
     public static boolean applyAutoDetection() {
@@ -83,7 +95,7 @@ public final class WorkspaceSetup {
             Path subServer = serverPath.resolve("Server");
             if (hasServerJar(subServer)) {
                 cfg.server_path = subServer.toAbsolutePath().toString();
-                serverPath = subServer; // <-- Ahora SÍ se usa para los siguientes pasos
+                serverPath = subServer;
                 modified = true;
                 Core.atInfo(Log.CONFIG).log("Ruta de servidor ajustada a subcarpeta: " + cfg.server_path);
             }
@@ -125,7 +137,23 @@ public final class WorkspaceSetup {
         }
     }
 
-    // --- ACCESO DIRECTO Y ESTÁTICO ---
+    public static Path resolve(String rawPath) {
+        if (rawPath == null || rawPath.trim().isEmpty()) return null;
+        Path path = Path.of(rawPath);
+        if (!path.isAbsolute()) {
+            return workspacePath.resolve(path).toAbsolutePath().normalize();
+        }
+        return path.toAbsolutePath().normalize();
+    }
+
+    public static @NotNull String relativize(Path absolutePath) {
+        if (absolutePath == null) return "";
+        if (absolutePath.startsWith(workspacePath)) {
+            return "./" + workspacePath.relativize(absolutePath).toString().replace("\\", "/");
+        }
+        return absolutePath.toAbsolutePath().toString();
+    }
+
     public static ConfigService<NexusConfig> getNexus() {
         return nexus;
     }
@@ -134,10 +162,20 @@ public final class WorkspaceSetup {
         return curseForge;
     }
 
-    public static Path getLocalModsPath() {
-        return localModsPath;
+    public static ConfigService<GitHubConfig> getGithub (){
+        return github;
     }
-    //public static Path getWorkspacePath() { return workspacePath; }
+
+    public static ConfigService<HealingConfig> getHealing() {
+        return healing;
+    }
+
+        public static Path getLocalModsPath() {
+            return localModsPath;
+        }
+
+    public static Path getGithubDownloadsPath() { return githubDownloadsPath; }
+    public static Path getGithubBackupPath() { return githubBackupPath; }
 
 
     public static String tryAutoDetectJar(String specificPath) {
@@ -178,8 +216,8 @@ public final class WorkspaceSetup {
                 : "";
     }
 
-
     public static String getDefaultWatchPrefix() {
         return DefaultWatchPrefix;
     }
+    public static String getDefaultGitHubPrefix() {return DefaultGitHubPrefix;}
 }

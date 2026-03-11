@@ -17,7 +17,7 @@ public class NexusConfig {
     public NexusConfig() {
         Watcher defaultWatcher = createWatcher(
                 WorkspaceSetup.getLocalModsPath().toString(),
-                "",
+                "./SyncMods",
                 true
         );
         defaultWatcher.path_sync = true;

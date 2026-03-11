@@ -69,4 +69,15 @@ public class CommandExecutor<T> {
         }
     }
 
+    public void sendCommand(String cmd) {
+        if (process != null && process.isAlive()) {
+            try {
+                PrintWriter writer = new PrintWriter(new OutputStreamWriter(process.getOutputStream()), true);
+                writer.println(cmd);
+            } catch (Exception e) {
+                Core.atError(Log.SYSTEM).log("Error enviando comando: " + e.getMessage());
+            }
+        }
+    }
+
 }

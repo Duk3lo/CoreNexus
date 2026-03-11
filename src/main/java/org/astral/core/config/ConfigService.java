@@ -34,7 +34,6 @@ public class ConfigService<T> {
         Yaml yaml = createYamlInstance();
 
         try {
-            // No resolvemos nada, usamos la ruta que nos dio el Workspace
             if (Files.notExists(configPath)) {
                 this.config = defaultSupplier.get();
                 save();

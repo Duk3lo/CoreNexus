@@ -19,7 +19,7 @@ public class DirectoryWatcher {
     private volatile boolean running = true;
     private final String threadName;
     private Thread watcherThread;
-    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(4); // Aumentado para logs fluidos
+    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(4);
     private final ConcurrentHashMap<Path, Long> lastKnownSizes = new ConcurrentHashMap<>();
     private final Set<Path> checkingFiles = Collections.synchronizedSet(new HashSet<>());
     private final Set<Path> ignoreEvents = Collections.newSetFromMap(new ConcurrentHashMap<>());
@@ -55,24 +55,15 @@ public class DirectoryWatcher {
             Core.atError(Log.WATCHER, folderName).log("Ruta no encontrada: " + directory);
             return;
         }
-
-        // --- INFO DE INICIO DETALLADA ---
         Core.atInfo(Log.WATCHER, folderName).log("Vigilante [" + threadName + "] en línea.");
         Core.atInfo(Log.WATCHER, folderName).log("  -> Origen:  " + directory);
-
-        // Mostramos el destino siempre que exista en la configuración
         if (targetDirectory != null) {
             String syncType = config.path_sync ? " (Sincronización Activa)" : " (Solo Envío)";
             Core.atInfo(Log.WATCHER, folderName).log("  -> Destino: " + targetDirectory + syncType);
-
-
         } else {
             Core.atInfo(Log.WATCHER, folderName).log("  -> Destino: NO CONFIGURADO");
         }
-
         Core.atInfo(Log.WATCHER, folderName).log("---------------------------------------------------------");
-
-        // --- LISTADO INICIAL DE CONTENIDO ---
         boolean hasFiles = false;
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(directory)) {
             for (Path entry : stream) {
@@ -86,8 +77,6 @@ public class DirectoryWatcher {
                         type, entry.getFileName(), formatSize(size)));
             }
         } catch (IOException ignored) {}
-
-        // Si la carpeta estaba vacía, ponemos un aviso en lugar de solo la línea
         if (!hasFiles) {
             Core.atInfo(Log.WATCHER, folderName).log("  (Carpeta de origen vacía)");
         }
@@ -109,7 +98,7 @@ public class DirectoryWatcher {
                 Core.atInfo(Log.WATCHER, folderName).log("  [Limpieza] Vaciando carpeta destino...");
                 try (Stream<Path> paths = Files.walk(targetDirectory)) {
                     paths.filter(p -> !p.equals(targetDirectory))
-                            .sorted(Comparator.reverseOrder()) // Borra archivos primero, luego carpetas
+                            .sorted(Comparator.reverseOrder())
                             .forEach(p -> {
                                 try { Files.delete(p); } catch (IOException ignored) {}
                             });
@@ -192,14 +181,10 @@ public class DirectoryWatcher {
 
     private void handleDeletion(Path fullPath) {
         Path relativePath = directory.relativize(fullPath);
-
-        // No borramos de inmediato, esperamos 300ms para ver si es un reemplazo de editor
         scheduler.schedule(() -> {
-            // Si el archivo ya volvió a existir, es que fue un Rename/Save de un editor. No borramos.
             if (Files.exists(fullPath)) {
                 return;
             }
-
             Core.atInfo(Log.WATCHER, folderName).log("[ELIMINADO] -> " + relativePath);
 
             if (config.path_sync && targetDirectory != null) {
@@ -218,7 +203,7 @@ public class DirectoryWatcher {
                     try { performSafeDeleteAction(targetFile); } catch (IOException ignored) {}
                 }
             }
-        }, 300, TimeUnit.MILLISECONDS); // 300.ms es suficiente para cualquier editor
+        }, 300, TimeUnit.MILLISECONDS);
     }
 
     private void executeWatcherLogic(Path filePath, long size) {
@@ -229,10 +214,7 @@ public class DirectoryWatcher {
 
         try {
             if (Files.exists(targetPath) && Files.size(filePath) == Files.size(targetPath)) return;
-
-            // REGISTRAMOS QUE VAMOS A TOCAR EL DESTINO
             ignoreEvents.add(targetPath);
-
             Path parentDir = targetPath.getParent();
             if (parentDir != null && !Files.exists(parentDir)) Files.createDirectories(parentDir);
 
@@ -245,11 +227,10 @@ public class DirectoryWatcher {
                 Core.atInfo(Log.WATCHER, folderName).log("Sincronizado (" + formatSize(size) + ") -> " + relativePath);
             }
 
-            // Quitamos él ignore después de un breve tiempo para permitir cambios reales del usuario
             scheduler.schedule(() -> ignoreEvents.remove(targetPath), 2, TimeUnit.SECONDS);
 
         } catch (IOException e) {
-            ignoreEvents.remove(targetPath); // Limpiar si hubo error
+            ignoreEvents.remove(targetPath);
             Core.atError(Log.WATCHER, folderName).log("Error de copia en " + relativePath);
         }
     }
@@ -284,7 +265,6 @@ public class DirectoryWatcher {
                         checkingFiles.remove(absPath);
                     } else {
                         lastKnownSizes.put(absPath, currentSize);
-                        // Log de progreso de escritura
                         Core.atInfo(Log.WATCHER, folderName).update("[MODIFICADO] -> " + relativePath + " | " + formatSize(currentSize) + "...");
                         scheduler.schedule(this, 1, TimeUnit.SECONDS);
                     }
@@ -294,8 +274,6 @@ public class DirectoryWatcher {
             }
         }, 1, TimeUnit.SECONDS);
     }
-
-    // --- FORMATEO Y TAMAÑO ---
 
     private @NotNull String formatSize(long bytes) {
         if (bytes <= 0) return "0 B";
@@ -314,8 +292,6 @@ public class DirectoryWatcher {
         }
     }
 
-    // --- MÉTODOS DE APOYO RESTANTES ---
-
     private boolean isFileAllowed(Path path) {
         if (Files.isDirectory(path)) return config.path_listen_Folders;
         if (watchAll) return true;
@@ -332,7 +308,6 @@ public class DirectoryWatcher {
             return;
         }
 
-        // Si SÍ debemos escuchar carpetas, mantenemos el comportamiento actual
         Files.walkFileTree(root, new SimpleFileVisitor<>() {
             @Override
             public @NotNull FileVisitResult preVisitDirectory(@NotNull Path dir, @NotNull BasicFileAttributes attrs) throws IOException {
