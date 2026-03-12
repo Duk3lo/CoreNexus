@@ -1,6 +1,8 @@
 package org.astral.core.command;
 
+import org.astral.core.api.github.GItHubApi;
 import org.astral.core.config.ConfigService;
+import org.astral.core.config.curseforge.CurseForgeConfig;
 import org.astral.core.config.nexus.HealingConfig;
 import org.astral.core.config.nexus.NexusConfig;
 import org.astral.core.file.WatcherManager;
@@ -68,6 +70,8 @@ public class CommandTerminal {
 
         switch (command) {
             case "core-health" -> handleHealthCommand(subCommand, extraArgs);
+
+            case "core-curseforge" -> handleCurseForgeCommand(subCommand, extraArgs);
 
             case "core-github" -> handleGitHubCommand(subCommand, extraArgs);
 
@@ -141,11 +145,62 @@ public class CommandTerminal {
         }
     }
 
+    private void handleCurseForgeCommand(@NotNull String sub, String args) {
+        switch (sub) {
+            case "sync-all" -> {
+                Core.atInfo(Log.CURSEFORGE).log("Forzando sincronización de todos los mods de CurseForge...");
+                org.astral.core.api.curseforge.CurseForgeAPI.getInstance().syncAll();
+            }
+            case "sync" -> {
+                if (args.isEmpty()) {
+                    Core.atWarning(Log.CURSEFORGE).log("Uso: core-curseforge sync <nombre_en_yml>");
+                    return;
+                }
+                String modKey = args.split("\\s+")[0];
+                Core.atInfo(Log.CURSEFORGE).log("Sincronizando el mod: " + modKey);
+                org.astral.core.api.curseforge.CurseForgeAPI.getInstance().syncMod(modKey);
+            }
+            case "add" -> {
+                if (args.isEmpty()) {
+                    Core.atWarning(Log.CURSEFORGE).log("Uso: core-curseforge add <id_proyecto>");
+                    return;
+                }
+                try {
+                    int projectId = Integer.parseInt(args.split("\\s+")[0]);
+                    String key = "mod_" + projectId; // Creamos una llave automática
+
+                    CurseForgeConfig cfCfg = WorkspaceSetup.getCurseForge().getConfig();
+                    if (cfCfg == null) return;
+
+                    if (cfCfg.resources.containsKey(key)) {
+                        Core.atWarning(Log.CURSEFORGE).log("El mod ID " + projectId + " ya existe en tu configuración.");
+                        return;
+                    }
+
+                    CurseForgeConfig.CurseForgeResource newResource =
+                            CurseForgeConfig.createResource(
+                                    projectId,
+                                    WorkspaceSetup.relativize(WorkspaceSetup.getLocalModsPath())
+                            );
+
+                    cfCfg.resources.put(key, newResource);
+                    WorkspaceSetup.getCurseForge().save();
+
+                    Core.atInfo(Log.CURSEFORGE).log("✅ Mod " + projectId + " agregado exitosamente como '" + key + "'.");
+                    Core.atInfo(Log.CURSEFORGE).log("Tip: Usa 'core-curseforge sync " + key + "' para descargarlo.");
+                } catch (NumberFormatException e) {
+                    Core.atError(Log.CURSEFORGE).log("El ID del proyecto debe ser un número.");
+                }
+            }
+            default -> Core.atInfo(Log.CURSEFORGE).log("Sub-comandos de CurseForge: sync-all, sync <nombre>, add <id>");
+        }
+    }
+
     private void handleGitHubCommand(@NotNull String sub, String args) {
         switch (sub) {
             case "sync-all" -> {
                 Core.atInfo(Log.GITHUB).log("Forzando sincronización de todos los repositorios...");
-                org.astral.core.github.GItHubApi.getInstance().syncAll();
+                GItHubApi.getInstance().syncAll();
             }
             case "sync" -> {
                 if (args.isEmpty()) {
@@ -154,7 +209,7 @@ public class CommandTerminal {
                 }
                 String repoKey = args.split("\\s+")[0];
                 Core.atInfo(Log.GITHUB).log("Sincronizando el repositorio: " + repoKey);
-                org.astral.core.github.GItHubApi.getInstance().syncRepo(repoKey);
+                GItHubApi.getInstance().syncRepo(repoKey);
             }
             case "add" -> {
                 if (!args.contains("/")) {

@@ -1,14 +1,44 @@
 package org.astral.core.config.curseforge;
 
-import java.util.ArrayList;
-import java.util.List;
-//Proximamente
+import org.astral.core.setup.WorkspaceSetup;
+import org.jetbrains.annotations.NotNull;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 public class CurseForgeConfig {
-    public String apiKey = "INSERT_YOUR_KEY_HERE";
-    public List<Integer> modIds = new ArrayList<>();
-    public boolean autoUpdate = true;
+    public String global_api_key = "INSERT_YOUR_KEY_HERE";
+    public Map<String, CurseForgeResource> resources = new LinkedHashMap<>();
 
     public CurseForgeConfig() {
-        modIds.add(12345);
+        CurseForgeResource defaultResource = createResource(
+                123456,
+                WorkspaceSetup.relativize(WorkspaceSetup.getLocalModsPath())
+        );
+        resources.put(WorkspaceSetup.getDefaultCurseForgePrefix(), defaultResource);
+    }
+
+    public static class CurseForgeResource {
+        public boolean enable;
+        public int project_id;
+        public String destination_path;
+        public boolean keep_backup;
+        public int local_file_id;
+        public String local_file_name;
+        public String release_type;
+
+        public CurseForgeResource() {
+        }
+    }
+
+    public static @NotNull CurseForgeResource createResource(int projectId, String dest) {
+        CurseForgeResource r = new CurseForgeResource();
+        r.enable = true;
+        r.project_id = projectId;
+        r.destination_path = dest;
+        r.keep_backup = true;
+        r.local_file_id = 0;
+        r.local_file_name = "";
+        r.release_type = "release";
+        return r;
     }
 }

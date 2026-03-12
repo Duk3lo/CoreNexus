@@ -21,10 +21,13 @@ public final class WorkspaceSetup {
 
     private static final String DefaultWatchPrefix = "_Default_";
     private static final String DefaultGitHubPrefix = "_example_";
+    private static final String DefaultCurseForgePrefix = "_mod_example_";
 
     private static Path workspacePath;
     private static Path localModsPath;
     private static Path curseForgePath;
+    private static Path curseForgeDownloadsPath;
+    private static Path curseForgeBackupPath;
     private static Path githubPath;
     private static Path githubDownloadsPath;
     private static Path githubBackupPath;
@@ -63,6 +66,8 @@ public final class WorkspaceSetup {
         workspacePath = baseExecutionPath.resolve("CoreNexus");
         localModsPath = workspacePath.resolve("SyncMods");
         curseForgePath = workspacePath.resolve("CurseForge");
+        curseForgeDownloadsPath = curseForgePath.resolve("Downloads");
+        curseForgeBackupPath = curseForgePath.resolve("Backup");
         githubPath = workspacePath.resolve("GitHub");
         githubDownloadsPath = githubPath.resolve("Downloads");
         githubBackupPath = githubPath.resolve("Backup");
@@ -170,12 +175,11 @@ public final class WorkspaceSetup {
         return healing;
     }
 
-        public static Path getLocalModsPath() {
-            return localModsPath;
-        }
-
+    public static Path getLocalModsPath() { return localModsPath;}
     public static Path getGithubDownloadsPath() { return githubDownloadsPath; }
     public static Path getGithubBackupPath() { return githubBackupPath; }
+    public static Path getCurseForgeDownloadsPath() { return curseForgeDownloadsPath; }
+    public static Path getCurseForgeBackupPath() { return curseForgeBackupPath; }
 
 
     public static String tryAutoDetectJar(String specificPath) {
@@ -216,8 +220,8 @@ public final class WorkspaceSetup {
                 : "";
     }
 
-    public static String getDefaultWatchPrefix() {
-        return DefaultWatchPrefix;
-    }
+    public static String getDefaultWatchPrefix() {return DefaultWatchPrefix;}
     public static String getDefaultGitHubPrefix() {return DefaultGitHubPrefix;}
+    public static String getDefaultCurseForgePrefix(){return DefaultCurseForgePrefix;}
+
 }

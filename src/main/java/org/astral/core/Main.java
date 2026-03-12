@@ -1,10 +1,11 @@
 package org.astral.core;
 
+import org.astral.core.api.curseforge.CurseForgeAPI;
 import org.astral.core.command.CommandTerminal;
 import org.astral.core.config.nexus.NexusConfig;
 import org.astral.core.file.DirectoryWatcher;
 import org.astral.core.file.WatcherManager;
-import org.astral.core.github.GItHubApi;
+import org.astral.core.api.github.GItHubApi;
 import org.astral.core.healing.HealthMonitor;
 import org.astral.core.process.Server;
 import org.astral.core.setup.WorkspaceSetup;
@@ -16,6 +17,7 @@ public final class Main {
         WorkspaceSetup.init();
         CommandTerminal.getInstance().startListening();
         HealthMonitor.getInstance().start();
+        CurseForgeAPI.getInstance().syncAll();
         GItHubApi.getInstance().syncAll();
         NexusConfig cfg = WorkspaceSetup.getNexus().getConfig();
         if (cfg == null) return;
