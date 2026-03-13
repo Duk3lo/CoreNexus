@@ -58,7 +58,7 @@ public class DirectoryWatcher {
         Core.atInfo(Log.WATCHER, folderName).log("Vigilante [" + threadName + "] en línea.");
         Core.atInfo(Log.WATCHER, folderName).log("  -> Origen:  " + directory);
         if (targetDirectory != null) {
-            String syncType = config.path_sync ? " (Sincronización Activa)" : " (Solo Envío)";
+            String syncType = config.bidirectional_sync ? " (Sincronización Activa)" : " (Solo Envío)";
             Core.atInfo(Log.WATCHER, folderName).log("  -> Destino: " + targetDirectory + syncType);
         } else {
             Core.atInfo(Log.WATCHER, folderName).log("  -> Destino: NO CONFIGURADO");
@@ -179,6 +179,16 @@ public class DirectoryWatcher {
         }
     }
 
+    private boolean shouldApplyActions(String fileName) {
+        if (config.apply_Actions_Only == null || config.apply_Actions_Only.trim().isEmpty()) return false;
+        String[] exts = config.apply_Actions_Only.toLowerCase().split("\\s+");
+        String lowerName = fileName.toLowerCase();
+        for (String ext : exts) {
+            if (lowerName.endsWith(ext)) return true;
+        }
+        return false;
+    }
+
     private void handleDeletion(Path fullPath) {
         Path relativePath = directory.relativize(fullPath);
         scheduler.schedule(() -> {
@@ -187,19 +197,20 @@ public class DirectoryWatcher {
             }
             Core.atInfo(Log.WATCHER, folderName).log("[ELIMINADO] -> " + relativePath);
 
-            if (config.path_sync && targetDirectory != null) {
+            if (targetDirectory != null) {
                 Path targetFile = targetDirectory.resolve(relativePath);
                 try {
                     if (Files.exists(targetFile)) {
-                        if (relativePath.toString().endsWith(config.apply_Actions_Only) && config.path_safe_delete) {
+                        if (shouldApplyActions(relativePath.getFileName().toString()) && config.path_safe_delete) {
+                            Core.atInfo(Log.WATCHER, folderName).log("Iniciando Safe-Delete para: " + relativePath.getFileName());
                             performSafeDeleteAction(targetFile);
                         } else {
                             Files.deleteIfExists(targetFile);
-                            Core.atInfo(Log.WATCHER, folderName).log("Espejo actualizado: " + relativePath);
+                            Core.atInfo(Log.WATCHER, folderName).log("Espejo actualizado (Eliminado en servidor): " + relativePath);
                         }
                     }
                 } catch (IOException e) {
-                    Core.atWarning(Log.WATCHER, folderName).log("Archivo bloqueado. Intentando Safe-Delete...");
+                    Core.atWarning(Log.WATCHER, folderName).log("Archivo bloqueado. Intentando Safe-Delete forzado...");
                     try { performSafeDeleteAction(targetFile); } catch (IOException ignored) {}
                 }
             }
@@ -207,7 +218,7 @@ public class DirectoryWatcher {
     }
 
     private void executeWatcherLogic(Path filePath, long size) {
-        if (!config.path_sync || targetDirectory == null) return;
+        if (targetDirectory == null) return;
 
         Path relativePath = directory.relativize(filePath.toAbsolutePath().normalize());
         Path targetPath = targetDirectory.resolve(relativePath);
@@ -218,13 +229,15 @@ public class DirectoryWatcher {
             Path parentDir = targetPath.getParent();
             if (parentDir != null && !Files.exists(parentDir)) Files.createDirectories(parentDir);
 
-            if (filePath.getFileName().toString().endsWith(config.apply_Actions_Only)) {
+            if (shouldApplyActions(filePath.getFileName().toString())) {
+                Core.atInfo(Log.WATCHER, folderName).log("Ejecutando secuencia de acciones para: " + filePath.getFileName());
                 for (NexusConfig.ActionType action : config.actions) {
                     performAction(action, filePath, targetPath);
                 }
+                Core.atInfo(Log.WATCHER, folderName).log("Secuencia completada con éxito (" + formatSize(size) + ") -> " + relativePath);
             } else {
                 Files.copy(filePath, targetPath, StandardCopyOption.REPLACE_EXISTING);
-                Core.atInfo(Log.WATCHER, folderName).log("Sincronizado (" + formatSize(size) + ") -> " + relativePath);
+                Core.atInfo(Log.WATCHER, folderName).log("Copiado (" + formatSize(size) + ") -> " + relativePath);
             }
 
             scheduler.schedule(() -> ignoreEvents.remove(targetPath), 2, TimeUnit.SECONDS);
@@ -323,23 +336,45 @@ public class DirectoryWatcher {
     private void performAction(NexusConfig.@NotNull ActionType action, Path source, Path target) {
         try {
             switch (action) {
-                case STOP_SERVER -> { if (Server.getInstance() != null) Server.getInstance().stopServer(); }
-                case DELETE -> Files.deleteIfExists(target);
-                case COPY -> Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
+                case STOP_SERVER -> {
+                    if (Server.getInstance() != null) {
+                        Core.atInfo(Log.WATCHER, folderName).log("  [Acción] Apagando servidor...");
+                        Server.getInstance().stopServer();
+                    }
+                }
+                case DELETE -> {
+                    Core.atInfo(Log.WATCHER, folderName).log("  [Acción] Eliminando versión antigua en destino...");
+                    Files.deleteIfExists(target);
+                }
+                case COPY -> {
+                    Core.atInfo(Log.WATCHER, folderName).log("  [Acción] Copiando nueva versión al servidor...");
+                    Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
+                }
                 case START_SERVER -> {
+                    Core.atInfo(Log.WATCHER, folderName).log("  [Acción] Iniciando servidor nuevamente...");
                     var cfg = org.astral.core.setup.WorkspaceSetup.getNexus().getConfig();
                     Server.startServer(cfg.server_path, cfg.jar_name, cfg.args);
                 }
             }
-        } catch (IOException ignored) {}
+        } catch (IOException e) {
+            Core.atError(Log.WATCHER, folderName).log("Fallo al ejecutar la acción " + action.name() + ": " + e.getMessage());
+        }
     }
 
     private void performSafeDeleteAction(@NotNull Path target) throws IOException {
-        Core.atInfo(Log.SERVER).log("Safe-Delete en curso...");
-        if (Server.getInstance() != null) Server.getInstance().stopServer();
+        if (Server.getInstance() != null) {
+            Core.atInfo(Log.WATCHER, folderName).log("  [Safe-Delete] Apagando servidor...");
+            Server.getInstance().stopServer();
+        }
+
+        Core.atInfo(Log.WATCHER, folderName).log("  [Safe-Delete] Eliminando archivo antiguo...");
         Files.deleteIfExists(target);
+
+        Core.atInfo(Log.WATCHER, folderName).log("  [Safe-Delete] Reiniciando servidor...");
         var cfg = org.astral.core.setup.WorkspaceSetup.getNexus().getConfig();
         Server.startServer(cfg.server_path, cfg.jar_name, cfg.args);
+
+        Core.atInfo(Log.WATCHER, folderName).log("  [Safe-Delete] Proceso completado.");
     }
 
     public void stop() {

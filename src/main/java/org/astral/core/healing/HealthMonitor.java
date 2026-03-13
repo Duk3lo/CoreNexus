@@ -172,10 +172,13 @@ public class HealthMonitor {
 
             String rawMem = getServerMemoryUsage(handle.pid());
             String formattedMem = formatMemory(rawMem);
+
             long cpuSeconds = handle.info().totalCpuDuration().map(Duration::toSeconds).orElse(0L);
+            String cpuUsage = getServerCpuUsage(handle.pid());
 
             Core.atInfo(Log.HEALTH).log("[SERVER] Proceso  : " + simpleName + " (PID: " + handle.pid() + ")");
             Core.atInfo(Log.HEALTH).log("[SERVER] RAM Proc : " + formattedMem);
+            Core.atInfo(Log.HEALTH).log("[SERVER] CPU Uso  : " + cpuUsage);
             Core.atInfo(Log.HEALTH).log("[SERVER] CPU Tiempo Total: " + cpuSeconds + "s");
 
             if (serverStartTime > 0) {
@@ -188,6 +191,50 @@ public class HealthMonitor {
             Core.atWarning(Log.HEALTH).log("[SERVER] Estado   : ❌ APAGADO");
         }
         Core.atInfo(Log.HEALTH).log("===================================");
+    }
+
+    private String getServerCpuUsage(long pid) {
+        String os = System.getProperty("os.name").toLowerCase();
+        String pidStr = String.valueOf(pid);
+
+        try {
+            List<String> command = getCommandsConsult(os, pidStr);
+            Process p = new ProcessBuilder(command).start();
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
+                String line;
+                String result = "0%";
+                while ((line = reader.readLine()) != null) {
+                    line = line.trim();
+                    if (line.isEmpty() || line.equalsIgnoreCase("PercentProcessorTime")) continue;
+                    result = line + "%";
+                    break;
+                }
+                return result;
+            }
+        } catch (Exception e) {
+            return "N/A";
+        }
+    }
+
+    private static @NotNull List<String> getCommandsConsult(@NotNull String os, String pidStr) {
+        List<String> command = new ArrayList<>();
+
+        if (os.contains("win")) {
+            command.add("wmic");
+            command.add("path");
+            command.add("Win32_PerfFormattedData_PerfProc_Process");
+            command.add("where");
+            command.add("IDProcess=" + pidStr);
+            command.add("get");
+            command.add("PercentProcessorTime");
+        } else {
+            command.add("ps");
+            command.add("-p");
+            command.add(pidStr);
+            command.add("-o");
+            command.add("%cpu=");
+        }
+        return command;
     }
 
     private String getServerMemoryUsage(long pid) {

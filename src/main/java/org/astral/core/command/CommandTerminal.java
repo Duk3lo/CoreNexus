@@ -258,7 +258,7 @@ public class CommandTerminal {
                                 ? "NO DEFINIDA (Auto-detectar)"
                                 : w.path_destination;
                         Core.atInfo(Log.WATCHER).log("     |-- Destino: " + dest);
-                        if (w.path_sync) {
+                        if (w.bidirectional_sync) {
                             Core.atInfo(Log.WATCHER).log("     |-- Modo:    Sincronización Bidireccional (Espejo)");
                         }
                         Core.atInfo(Log.WATCHER).log("     ---------------------------------------------------");

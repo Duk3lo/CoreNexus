@@ -46,7 +46,7 @@ public class WatcherManager {
         } else {
             Core.atError(Log.WATCHER).log("La ruta de origen no existe: " + sourcePath);
         }
-        if (config.path_sync && config.path_destination != null && !config.path_destination.trim().isEmpty()) {
+        if (config.bidirectional_sync && config.path_destination != null && !config.path_destination.trim().isEmpty()) {
             Path destPath = WorkspaceSetup.resolve(config.path_destination);
 
             if (Files.exists(destPath)) {

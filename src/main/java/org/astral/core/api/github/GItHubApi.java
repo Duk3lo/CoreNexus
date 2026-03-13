@@ -126,26 +126,17 @@ public class GItHubApi extends BaseModDownloader {
         GitHubConfig githubCfg = WorkspaceSetup.getGithub().getConfig();
         if (githubCfg == null || githubCfg.resources == null) return;
 
-        String targetKey = null;
-
-        if (githubCfg.resources.containsKey(query)) {
-            targetKey = query;
-        } else {
-            for (Map.Entry<String, GitHubConfig.RepositoryResource> entry : githubCfg.resources.entrySet()) {
-                GitHubConfig.RepositoryResource res = entry.getValue();
-                if (res.repo_slug.equalsIgnoreCase(query) || (res.local_file_name != null && res.local_file_name.equalsIgnoreCase(query))) {
-                    targetKey = entry.getKey();
-                    break;
-                }
-            }
-        }
+        String targetKey = findKey(query);
 
         if (targetKey != null) {
             githubCfg.resources.remove(targetKey);
             WorkspaceSetup.getGithub().save();
-            Core.atInfo(Log.GITHUB).log("🗑️ Repositorio '" + targetKey + "' eliminado de la configuración.");
+            Core.atInfo(Log.GITHUB).log("🗑️ Repositorio eliminado: '" + targetKey + "'");
         } else {
             Core.atWarning(Log.GITHUB).log("No se encontró el repositorio GitHub: " + query);
+            Core.atInfo(Log.GITHUB).log("--- Repositorios registrados ---");
+            githubCfg.resources.forEach((key, res) -> Core.atInfo(Log.GITHUB).log(" 📌 Key: " + key + " | Repo: " + res.repo_slug + " | Archivo: " + res.local_file_name));
+            Core.atInfo(Log.GITHUB).log("--------------------------------");
         }
     }
 

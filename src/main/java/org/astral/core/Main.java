@@ -37,7 +37,7 @@ public final class Main {
                 }
             }
         }
-        //Server.startServer(cfg.server_path, cfg.jar_name, cfg.args);
+        Server.startServer(cfg.server_path, cfg.jar_name, cfg.args);
         CommandTerminal.printDelayedHelp();
     }
 }

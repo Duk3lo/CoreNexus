@@ -18,6 +18,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -70,7 +72,7 @@ public class CurseForgeAPI extends BaseModDownloader {
             conn.setRequestProperty("x-api-key", globalApiKey);
 
             if (conn.getResponseCode() != 200) {
-                Core.atError(Log.CURSEFORGE).log("No se encontró el mod con ID: " + projectId);
+                Core.atError(Log.CURSEFORGE).log("No se encontró ningún mod exacto con el ID: " + projectId);
                 return;
             }
 
@@ -79,8 +81,23 @@ public class CurseForgeAPI extends BaseModDownloader {
 
             if (nameMatcher.find()) {
                 String foundName = nameMatcher.group(1);
-                Core.atInfo(Log.CURSEFORGE).log("ID reconocido como: " + foundName);
-                searchAndAddModByName(foundName);
+                String key = foundName.replaceAll("[^a-zA-Z0-9]", "_").toLowerCase();
+
+                if (cfConfig.resources.containsKey(key)) {
+                    Core.atWarning(Log.CURSEFORGE).log("⚠️ El mod ya está registrado con la clave: '" + key + "'");
+                    return;
+                }
+
+                CurseForgeConfig.CurseForgeResource newResource = CurseForgeConfig.createResource(
+                        projectId,
+                        WorkspaceSetup.relativize(WorkspaceSetup.getLocalModsPath())
+                );
+
+                cfConfig.resources.put(key, newResource);
+                WorkspaceSetup.getCurseForge().save();
+
+                Core.atInfo(Log.CURSEFORGE).log("✅ PROCEDER CON LA INSTALACIÓN: " + foundName + " (ID: " + projectId + ")");
+                syncMod(key);
             }
 
         } catch (Exception e) {
@@ -91,39 +108,22 @@ public class CurseForgeAPI extends BaseModDownloader {
     public void removeMod(String query) {
         CurseForgeConfig cfConfig = WorkspaceSetup.getCurseForge().getConfig();
         if (cfConfig == null || cfConfig.resources == null) return;
-
-        String targetKey = null;
-        if (cfConfig.resources.containsKey(query)) {
-            targetKey = query;
-        } else {
-            for (Map.Entry<String, CurseForgeConfig.CurseForgeResource> entry : cfConfig.resources.entrySet()) {
-                CurseForgeConfig.CurseForgeResource res = entry.getValue();
-                if (query.matches("\\d+") && res.project_id == Integer.parseInt(query)) {
-                    targetKey = entry.getKey();
-                    break;
-                }
-                if (res.local_file_name != null && res.local_file_name.equalsIgnoreCase(query)) {
-                    targetKey = entry.getKey();
-                    break;
-                }
-            }
-        }
+        String targetKey = findKey(query);
 
         if (targetKey != null) {
             cfConfig.resources.remove(targetKey);
             WorkspaceSetup.getCurseForge().save();
-            Core.atInfo(Log.CURSEFORGE).log("🗑️ '" + targetKey + "' ha sido eliminado de la configuración.");
-            Core.atInfo(Log.CURSEFORGE).log("Nota: El archivo físico no ha sido tocado.");
+            Core.atInfo(Log.CURSEFORGE).log("🗑️ Mod eliminado: '" + targetKey + "'");
+            Core.atInfo(Log.CURSEFORGE).log("Nota: El archivo físico en el disco no ha sido eliminado.");
         } else {
-            Core.atWarning(Log.CURSEFORGE).log("No se encontró nada para eliminar con: " + query);
+            Core.atWarning(Log.CURSEFORGE).log("No se encontró ningún mod coincidente con: " + query);
+            Core.atInfo(Log.CURSEFORGE).log("--- Mods registrados actualmente ---");
+            cfConfig.resources.forEach((key, res) -> Core.atInfo(Log.CURSEFORGE).log(" 📌 Key: " + key + " | ID: " + res.project_id + " | Archivo: " + res.local_file_name));
+            Core.atInfo(Log.CURSEFORGE).log("------------------------------------");
         }
     }
 
     public void searchAndAddModByName(String modName) {
-        searchAndAddModByName(modName, null);
-    }
-
-    public void searchAndAddModByName(String modName, String originalFileName) {
         CurseForgeConfig cfConfig = WorkspaceSetup.getCurseForge().getConfig();
         if (cfConfig == null) return;
 
@@ -138,7 +138,7 @@ public class CurseForgeAPI extends BaseModDownloader {
             String encodedName = URLEncoder.encode(modName, StandardCharsets.UTF_8);
             String apiUrl = "https://api.curseforge.com/v1/mods/search?gameId=" + gameId + "&searchFilter=" + encodedName;
 
-            Core.atInfo(Log.CURSEFORGE).log("Buscando '" + modName + "' en CurseForge...");
+            Core.atInfo(Log.CURSEFORGE).log("Buscando coincidencias para '" + modName + "' en CurseForge...");
 
             URI uri = new URI(apiUrl);
             HttpURLConnection conn = (HttpURLConnection) uri.toURL().openConnection();
@@ -156,48 +156,38 @@ public class CurseForgeAPI extends BaseModDownloader {
             Pattern pattern = Pattern.compile("\"id\":(\\d+),\"gameId\":" + gameId + ",\"name\":\"([^\"]+)\"");
             Matcher matcher = pattern.matcher(json);
 
-            if (matcher.find()) {
-                int projectId = Integer.parseInt(matcher.group(1));
-                String foundName = matcher.group(2);
-                String key = foundName.replaceAll("[^a-zA-Z0-9]", "_").toLowerCase();
+            record ModResult(int id, String name) {
+            }
 
-                if (cfConfig.resources.containsKey(key)) {
-                    Core.atWarning(Log.CURSEFORGE).log("⚠️ El mod ya está registrado con la clave: '" + key + "'");
-                    return;
-                }
+            List<ModResult> results = new ArrayList<>();
+            while (matcher.find() && results.size() < 5) {
+                results.add(new ModResult(Integer.parseInt(matcher.group(1)), matcher.group(2)));
+            }
 
-                boolean idAlreadyRegistered = cfConfig.resources.values().stream()
-                        .anyMatch(resource -> resource.project_id == projectId);
-
-                if (idAlreadyRegistered) {
-                    Core.atWarning(Log.CURSEFORGE).log("⚠️ El mod '" + foundName + "' ya está registrado con el ID " + projectId + " bajo otra clave.");
-                    return;
-                }
-
-                Core.atInfo(Log.CURSEFORGE).log("¡Mod encontrado!: " + foundName + " (ID: " + projectId + ")");
-
-                CurseForgeConfig.CurseForgeResource newResource = CurseForgeConfig.createResource(
-                        projectId,
-                        WorkspaceSetup.relativize(WorkspaceSetup.getLocalModsPath())
-                );
-
-                if (originalFileName != null) {
-                    newResource.local_file_name = originalFileName;
-                }
-
-                cfConfig.resources.put(key, newResource);
-                WorkspaceSetup.getCurseForge().save();
-
-                Core.atInfo(Log.CURSEFORGE).log("✅ Mod '" + key + "' guardado. Sincronizando...");
-                syncMod(key);
-            } else {
+            if (results.isEmpty()) {
                 Core.atWarning(Log.CURSEFORGE).log("No se encontraron resultados para: " + modName);
+            } else if (results.size() == 1) {
+                Core.atInfo(Log.CURSEFORGE).log("Se encontró un único resultado exacto. Redirigiendo...");
+                addModById(results.getFirst().id);
+            } else {
+                Core.atInfo(Log.CURSEFORGE).log("========================================");
+                Core.atInfo(Log.CURSEFORGE).log("🔎 Se encontraron varios mods para: " + modName);
+                Core.atInfo(Log.CURSEFORGE).log("========================================");
+                for (ModResult res : results) {
+                    Core.atInfo(Log.CURSEFORGE).log(" 📌 Nombre: " + res.name + "   [ID: " + res.id + "]");
+                }
+                Core.atInfo(Log.CURSEFORGE).log("----------------------------------------");
+                Core.atInfo(Log.CURSEFORGE).log("👉 Para instalar uno, copia su ID y usa:");
+                Core.atInfo(Log.CURSEFORGE).log("   core-curseforge add <ID_DEL_MOD>");
+                Core.atInfo(Log.CURSEFORGE).log("👉 (Si deseas cancelar, simplemente ignora este mensaje)");
+                Core.atInfo(Log.CURSEFORGE).log("========================================");
             }
 
         } catch (Exception e) {
             Core.atError(Log.CURSEFORGE).log("Error al procesar búsqueda: " + e.getMessage());
         }
     }
+
     private @NotNull String cleanFileNameForSearch(@NotNull String filename) {
         String name = filename.substring(0, filename.lastIndexOf('.'));
         name = name.replaceAll("[-_][vV]?\\d+.*", "");
@@ -227,7 +217,7 @@ public class CurseForgeAPI extends BaseModDownloader {
                             String cleanName = cleanFileNameForSearch(untrackedFile);
                             Core.atInfo(Log.CURSEFORGE).log("🔍 Archivo no registrado detectado: " + untrackedFile);
                             Core.atInfo(Log.CURSEFORGE).log("Tratando de buscarlo en CurseForge como: '" + cleanName + "'");
-                            searchAndAddModByName(cleanName, untrackedFile);
+                            searchAndAddModByName(cleanName);
                         });
             }
         } catch (Exception e) {

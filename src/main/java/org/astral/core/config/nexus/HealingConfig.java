@@ -5,8 +5,8 @@ public class HealingConfig {
 
     // Tiempos dinámicos: D (Días), H (Horas), M (Minutos), S (Segundos)
     public String initial_delay = "30S";
-    public String check_interval = "1M";
-    public String scheduled_restart = "2D";
+    public String check_interval = "2D";
+    public String scheduled_restart = "4D";
 
     // Configuración de TPS
     public double min_tps_threshold = 15.0;
