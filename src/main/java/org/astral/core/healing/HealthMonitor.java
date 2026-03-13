@@ -6,6 +6,7 @@ import org.astral.core.logger.Core;
 import org.astral.core.logger.Log;
 import org.astral.core.process.Server;
 import org.astral.core.setup.WorkspaceSetup;
+import org.astral.core.utility.Parser;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.BufferedReader;
@@ -44,7 +45,7 @@ public class HealthMonitor {
             return;
         }
 
-        long intervalMillis = parseTime(config.check_interval);
+        long intervalMillis = Parser.parseTime(config.check_interval);
         if (intervalMillis <= 0) intervalMillis = 60000;
 
         scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -71,14 +72,14 @@ public class HealthMonitor {
 
             long now = System.currentTimeMillis();
             long uptime = now - serverStartTime;
-            long initialDelay = parseTime(config.initial_delay);
+            long initialDelay = Parser.parseTime(config.initial_delay);
 
             if (uptime <= initialDelay) return;
 
             Server server = Server.getInstance();
             if (server != null && server.getExecutor().getProcess().isAlive()) {
 
-                long scheduledTime = parseTime(config.scheduled_restart);
+                long scheduledTime = Parser.parseTime(config.scheduled_restart);
                 if (scheduledTime > 0 && uptime >= scheduledTime) {
                     Core.atWarning(Log.HEALTH).log("Tiempo máximo alcanzado (" + config.scheduled_restart + "). Iniciando reinicio programado...");
                     executeRestart();
@@ -241,17 +242,4 @@ public class HealthMonitor {
         }
     }
 
-    private long parseTime(String timeStr) {
-        if (timeStr == null || timeStr.trim().isEmpty()) return 0;
-        timeStr = timeStr.trim().toUpperCase();
-        try {
-            long multiplier = 1;
-            String numberPart = timeStr;
-            if (timeStr.endsWith("D")) { multiplier = 24L * 60 * 60 * 1000; numberPart = timeStr.replace("D", ""); }
-            else if (timeStr.endsWith("H")) { multiplier = 60L * 60 * 1000; numberPart = timeStr.replace("H", ""); }
-            else if (timeStr.endsWith("M")) { multiplier = 60L * 1000; numberPart = timeStr.replace("M", ""); }
-            else if (timeStr.endsWith("S")) { multiplier = 1000L; numberPart = timeStr.replace("S", ""); }
-            return Long.parseLong(numberPart) * multiplier;
-        } catch (Exception e) { return 0; }
-    }
 }

@@ -9,6 +9,7 @@ public enum Log {
     CONFIG("Config-Manager", Color.YELLOW),
     CURSEFORGE("CurseForge", Color.ORANGE),
     GITHUB("GitHub-Service", new Color(240, 246, 252)),
+    UPDATER("Auto-Updater", new Color(135, 206, 235)),
     HEALTH("Health-Monitor", new Color(255, 105, 180));
 
     public final String label;

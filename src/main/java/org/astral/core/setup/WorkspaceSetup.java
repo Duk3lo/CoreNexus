@@ -6,6 +6,7 @@ import org.astral.core.config.curseforge.CurseForgeConfig;
 import org.astral.core.config.github.GitHubConfig;
 import org.astral.core.config.nexus.HealingConfig;
 import org.astral.core.config.nexus.NexusConfig;
+import org.astral.core.config.nexus.UpdatesConfig;
 import org.astral.core.logger.Core;
 import org.astral.core.logger.Log;
 import org.jetbrains.annotations.NotNull;
@@ -36,7 +37,7 @@ public final class WorkspaceSetup {
     private static ConfigService<CurseForgeConfig> curseForge;
     private static ConfigService<GitHubConfig> github;
     private static ConfigService<HealingConfig> healing;
-
+    private static ConfigService<UpdatesConfig> updates;
 
     public static void init() {
         calculatePaths();
@@ -88,6 +89,9 @@ public final class WorkspaceSetup {
 
         healing = new ConfigService<>(HealingConfig.class, "healing.yml", HealingConfig::new, workspacePath);
         healing.load();
+
+        updates = new ConfigService<>(UpdatesConfig.class, "Updates.yml", UpdatesConfig::new, workspacePath);
+        updates.load();
     }
 
     public static boolean applyAutoDetection() {
@@ -175,6 +179,10 @@ public final class WorkspaceSetup {
         return healing;
     }
 
+    public static ConfigService<UpdatesConfig> getUpdates() {
+        return updates;
+    }
+
     public static Path getLocalModsPath() { return localModsPath;}
     public static Path getGithubDownloadsPath() { return githubDownloadsPath; }
     public static Path getGithubBackupPath() { return githubBackupPath; }
@@ -223,5 +231,4 @@ public final class WorkspaceSetup {
     public static String getDefaultWatchPrefix() {return DefaultWatchPrefix;}
     public static String getDefaultGitHubPrefix() {return DefaultGitHubPrefix;}
     public static String getDefaultCurseForgePrefix(){return DefaultCurseForgePrefix;}
-
 }

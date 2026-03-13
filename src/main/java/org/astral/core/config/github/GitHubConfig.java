@@ -26,7 +26,8 @@ public class GitHubConfig {
         public boolean keep_backup;
         public String local_version_tag;
         public String local_file_name;
-
+        public boolean verify_file_integrity = false;
+        public String last_verified_hash = "";
         public RepositoryResource() {
         }
     }
@@ -40,6 +41,7 @@ public class GitHubConfig {
         r.keep_backup = true;
         r.local_version_tag = "";
         r.local_file_name = "";
+
         return r;
     }
 }

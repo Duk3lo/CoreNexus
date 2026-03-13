@@ -1,5 +1,6 @@
 package org.astral.core;
 
+import org.astral.core.api.Updater;
 import org.astral.core.api.curseforge.CurseForgeAPI;
 import org.astral.core.command.CommandTerminal;
 import org.astral.core.config.nexus.NexusConfig;
@@ -16,9 +17,14 @@ public final class Main {
     static void main() {
         WorkspaceSetup.init();
         CommandTerminal.getInstance().startListening();
+        runFullBootstrap();
+    }
+
+    public static void runFullBootstrap(){
         HealthMonitor.getInstance().start();
         CurseForgeAPI.getInstance().syncAll();
         GItHubApi.getInstance().syncAll();
+        Updater.getInstance().start();
         NexusConfig cfg = WorkspaceSetup.getNexus().getConfig();
         if (cfg == null) return;
         if (cfg.watchers != null) {
@@ -31,6 +37,7 @@ public final class Main {
                 }
             }
         }
-        Server.startServer(cfg.server_path, cfg.jar_name, cfg.args);
+        //Server.startServer(cfg.server_path, cfg.jar_name, cfg.args);
+        CommandTerminal.printDelayedHelp();
     }
 }

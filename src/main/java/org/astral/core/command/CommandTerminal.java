@@ -1,8 +1,9 @@
 package org.astral.core.command;
 
+import org.astral.core.Main;
+import org.astral.core.api.curseforge.CurseForgeAPI;
 import org.astral.core.api.github.GItHubApi;
 import org.astral.core.config.ConfigService;
-import org.astral.core.config.curseforge.CurseForgeConfig;
 import org.astral.core.config.nexus.HealingConfig;
 import org.astral.core.config.nexus.NexusConfig;
 import org.astral.core.file.WatcherManager;
@@ -107,11 +108,18 @@ public class CommandTerminal {
             }
 
             case "core-reload" -> {
-                nexus.load();
-                WorkspaceSetup.applyAutoDetection();
-                Core.atInfo(Log.CONFIG).log("Configuración recargada.");
+                Core.atInfo(Log.SYSTEM).log("♻️ Reiniciando sistema integral...");
+                if (Server.getInstance() != null) Server.getInstance().stopServer();
+                WatcherManager.getInstance().stopAll();
+                HealthMonitor.getInstance().stop();
+                WorkspaceSetup.getNexus().load();
+                WorkspaceSetup.getGithub().load();
+                WorkspaceSetup.getCurseForge().load();
+                WorkspaceSetup.getHealing().load();
+                Main.runFullBootstrap();
+                Core.atInfo(Log.CONFIG).log("✅ Configuración y servicios reiniciados.");
             }
-
+            case "core-help" -> printHelp();
             case "start-server" -> Server.startServer(cfg.server_path, cfg.jar_name, cfg.args);
             case "stop-server" -> { if (Server.getInstance() != null) Server.getInstance().stopServer(); }
             case "exit-core" -> shutdownSystem();
@@ -145,98 +153,64 @@ public class CommandTerminal {
         }
     }
 
-    private void handleCurseForgeCommand(@NotNull String sub, String args) {
+    private void handleCurseForgeCommand(@NotNull String sub, @NotNull String args) {
+        CurseForgeAPI cfApi = CurseForgeAPI.getInstance();
+        String query = args.trim();
+
         switch (sub) {
-            case "sync-all" -> {
-                Core.atInfo(Log.CURSEFORGE).log("Forzando sincronización de todos los mods de CurseForge...");
-                org.astral.core.api.curseforge.CurseForgeAPI.getInstance().syncAll();
-            }
+            case "sync-all" -> cfApi.syncAll();
+
             case "sync" -> {
-                if (args.isEmpty()) {
-                    Core.atWarning(Log.CURSEFORGE).log("Uso: core-curseforge sync <nombre_en_yml>");
-                    return;
-                }
-                String modKey = args.split("\\s+")[0];
-                Core.atInfo(Log.CURSEFORGE).log("Sincronizando el mod: " + modKey);
-                org.astral.core.api.curseforge.CurseForgeAPI.getInstance().syncMod(modKey);
+                if (query.isEmpty()) { Core.atWarning(Log.CURSEFORGE).log("Uso: sync <key|id|file>"); return; }
+                cfApi.syncMod(query);
             }
+
             case "add" -> {
-                if (args.isEmpty()) {
-                    Core.atWarning(Log.CURSEFORGE).log("Uso: core-curseforge add <id_proyecto>");
-                    return;
-                }
-                try {
-                    int projectId = Integer.parseInt(args.split("\\s+")[0]);
-                    String key = "mod_" + projectId; // Creamos una llave automática
-
-                    CurseForgeConfig cfCfg = WorkspaceSetup.getCurseForge().getConfig();
-                    if (cfCfg == null) return;
-
-                    if (cfCfg.resources.containsKey(key)) {
-                        Core.atWarning(Log.CURSEFORGE).log("El mod ID " + projectId + " ya existe en tu configuración.");
-                        return;
-                    }
-
-                    CurseForgeConfig.CurseForgeResource newResource =
-                            CurseForgeConfig.createResource(
-                                    projectId,
-                                    WorkspaceSetup.relativize(WorkspaceSetup.getLocalModsPath())
-                            );
-
-                    cfCfg.resources.put(key, newResource);
-                    WorkspaceSetup.getCurseForge().save();
-
-                    Core.atInfo(Log.CURSEFORGE).log("✅ Mod " + projectId + " agregado exitosamente como '" + key + "'.");
-                    Core.atInfo(Log.CURSEFORGE).log("Tip: Usa 'core-curseforge sync " + key + "' para descargarlo.");
-                } catch (NumberFormatException e) {
-                    Core.atError(Log.CURSEFORGE).log("El ID del proyecto debe ser un número.");
-                }
+                if (query.isEmpty()) { Core.atWarning(Log.CURSEFORGE).log("Uso: add <id|nombre>"); return; }
+                if (query.matches("\\d+")) cfApi.addModById(Integer.parseInt(query));
+                else cfApi.searchAndAddModByName(query);
             }
-            default -> Core.atInfo(Log.CURSEFORGE).log("Sub-comandos de CurseForge: sync-all, sync <nombre>, add <id>");
+
+            case "remove" -> {
+                if (query.isEmpty()) { Core.atWarning(Log.CURSEFORGE).log("Uso: remove <key|id|file>"); return; }
+                cfApi.removeMod(query);
+            }
+
+            case "restore" -> {
+                if (query.isEmpty()) { Core.atWarning(Log.CURSEFORGE).log("Uso: restore <key|id|file>"); return; }
+                cfApi.restoreMod(query);
+            }
+            default -> Core.atInfo(Log.CURSEFORGE).log("Comandos: sync-all, sync, add, remove, restore");
         }
     }
 
-    private void handleGitHubCommand(@NotNull String sub, String args) {
+    private void handleGitHubCommand(@NotNull String sub, @NotNull String args) {
+        GItHubApi ghApi = GItHubApi.getInstance();
+        String query = args.trim();
+
         switch (sub) {
-            case "sync-all" -> {
-                Core.atInfo(Log.GITHUB).log("Forzando sincronización de todos los repositorios...");
-                GItHubApi.getInstance().syncAll();
-            }
+            case "sync-all" -> ghApi.syncAll();
+
             case "sync" -> {
-                if (args.isEmpty()) {
-                    Core.atWarning(Log.GITHUB).log("Uso: core-github sync <nombre_en_yml>");
-                    return;
-                }
-                String repoKey = args.split("\\s+")[0];
-                Core.atInfo(Log.GITHUB).log("Sincronizando el repositorio: " + repoKey);
-                GItHubApi.getInstance().syncRepo(repoKey);
+                if (query.isEmpty()) { Core.atWarning(Log.GITHUB).log("Uso: sync <key|slug|file>"); return; }
+                ghApi.syncRepo(query);
             }
+
             case "add" -> {
-                if (!args.contains("/")) {
-                    Core.atWarning(Log.GITHUB).log("Uso correcto: core-github add <usuario/repositorio>");
-                    return;
-                }
-                String repoSlug = args.split("\\s+")[0];
-                String key = repoSlug.substring(repoSlug.lastIndexOf("/") + 1);
-
-                org.astral.core.config.github.GitHubConfig githubCfg = WorkspaceSetup.getGithub().getConfig();
-                if (githubCfg == null) return;
-                if (githubCfg.resources.containsKey(key)) {
-                    Core.atWarning(Log.GITHUB).log("El repositorio '" + key + "' ya existe en tu configuración.");
-                    return;
-                }
-                org.astral.core.config.github.GitHubConfig.RepositoryResource newResource =
-                        org.astral.core.config.github.GitHubConfig.createResource(
-                                repoSlug,
-                                WorkspaceSetup.relativize(WorkspaceSetup.getLocalModsPath())
-                        );
-                githubCfg.resources.put(key, newResource);
-                WorkspaceSetup.getGithub().save();
-
-                Core.atInfo(Log.GITHUB).log("✅ Repositorio '" + repoSlug + "' agregado exitosamente.");
-                Core.atInfo(Log.GITHUB).log("Tip: Usa 'core-github sync " + key + "' para descargarlo ahora mismo.");
+                if (query.isEmpty()) { Core.atWarning(Log.GITHUB).log("Uso: add <usuario/repo>"); return; }
+                ghApi.addRepo(query);
             }
-            default -> Core.atInfo(Log.GITHUB).log("Sub-comandos de GitHub: sync-all, sync <nombre>, add <usuario/repo>");
+
+            case "remove" -> {
+                if (query.isEmpty()) { Core.atWarning(Log.GITHUB).log("Uso: remove <key|slug|file>"); return; }
+                ghApi.removeRepo(query);
+            }
+
+            case "restore" -> {
+                if (query.isEmpty()) { Core.atWarning(Log.GITHUB).log("Uso: restore <key|slug|file>"); return; }
+                ghApi.restoreRepo(query);
+            }
+            default -> Core.atInfo(Log.GITHUB).log("Comandos: sync-all, sync, add, remove, restore");
         }
     }
 
@@ -341,6 +315,30 @@ public class CommandTerminal {
         } else {
             Core.atWarning(Log.SYSTEM).log("No hay proceso activo. El comando '" + cmd + "' fue ignorado.");
         }
+    }
+
+    public static void printDelayedHelp() {
+        Thread helpThread = new Thread(() -> {
+            try {
+                boolean isRunning = Server.getInstance() != null && Server.getInstance().getExecutor().getProcess() != null && Server.getInstance().getExecutor().getProcess().isAlive();
+                long delay = isRunning ? 10000L : 2000L;
+                Thread.sleep(delay);
+                printHelp();
+            } catch (InterruptedException ignored) {}
+        }, "Help-Display-Thread");
+        helpThread.setDaemon(true);
+        helpThread.start();
+    }
+
+    public static void printHelp(){
+        Core.atInfo(Log.SYSTEM).log("--- 💡 CORE COMMANDS ---");
+        Core.atInfo(Log.CURSEFORGE).log(">> core-curseforge <sync|add|remove|restore> <key|id|name>");
+        Core.atInfo(Log.GITHUB).log(">> core-github <sync|add|remove|restore> <key|user/repo>");
+        Core.atInfo(Log.WATCHER).log(">> core-watcher <list|add|remove|enable> <nombre>");
+        Core.atInfo(Log.HEALTH).log(">> core-health <status|enable>");
+        Core.atInfo(Log.CONFIG).log(">> core-status, core-reload, core-setjar, core-setpathserver");
+        Core.atInfo(Log.SERVER).log(">> start-server, stop-server, exit-core");
+        Core.atInfo(Log.SYSTEM).log("-----------------------------------------");
     }
 
     private void shutdownSystem() {

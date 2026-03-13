@@ -7,6 +7,10 @@ import java.util.Map;
 
 public class CurseForgeConfig {
     public String global_api_key = "INSERT_YOUR_KEY_HERE";
+    public int global_game_id = 70216;
+
+    public boolean auto_search_untracked_mods = false;
+
     public Map<String, CurseForgeResource> resources = new LinkedHashMap<>();
 
     public CurseForgeConfig() {
@@ -24,7 +28,7 @@ public class CurseForgeConfig {
         public boolean keep_backup;
         public int local_file_id;
         public String local_file_name;
-        public String release_type;
+        public boolean verify_file_integrity;
 
         public CurseForgeResource() {
         }
@@ -35,10 +39,10 @@ public class CurseForgeConfig {
         r.enable = true;
         r.project_id = projectId;
         r.destination_path = dest;
-        r.keep_backup = true;
+        r.keep_backup = false;
         r.local_file_id = 0;
         r.local_file_name = "";
-        r.release_type = "release";
+        r.verify_file_integrity = false;
         return r;
     }
 }
