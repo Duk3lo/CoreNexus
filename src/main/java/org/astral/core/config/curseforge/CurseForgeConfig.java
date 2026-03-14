@@ -2,14 +2,18 @@ package org.astral.core.config.curseforge;
 
 import org.astral.core.setup.WorkspaceSetup;
 import org.jetbrains.annotations.NotNull;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 public class CurseForgeConfig {
     public String global_api_key = "INSERT_YOUR_KEY_HERE";
     public int global_game_id = 70216;
 
-    public boolean auto_search_untracked_mods = false;
+    public boolean auto_search_untracked_mods = true;
+
+    public List<String> ignored_untracked_files = new ArrayList<>();
 
     public Map<String, CurseForgeResource> resources = new LinkedHashMap<>();
 

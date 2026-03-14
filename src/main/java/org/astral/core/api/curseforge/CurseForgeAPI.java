@@ -208,11 +208,19 @@ public class CurseForgeAPI extends BaseModDownloader {
                     .map(r -> r.local_file_name)
                     .filter(name -> name != null && !name.isEmpty())
                     .collect(java.util.stream.Collectors.toSet());
+
             try (java.util.stream.Stream<Path> stream = Files.list(modsFolder)) {
                 stream.filter(Files::isRegularFile)
                         .map(p -> p.getFileName().toString())
                         .filter(name -> name.endsWith(".jar") || name.endsWith(".zip"))
                         .filter(name -> !trackedFiles.contains(name))
+                        .filter(name -> {
+                            if (cfConfig.ignored_untracked_files.contains(name)) {
+                                Core.atInfo(Log.CURSEFORGE).log("IGNORADO (Lista Negra): " + name);
+                                return false;
+                            }
+                            return true;
+                        })
                         .forEach(untrackedFile -> {
                             String cleanName = cleanFileNameForSearch(untrackedFile);
                             Core.atInfo(Log.CURSEFORGE).log("🔍 Archivo no registrado detectado: " + untrackedFile);

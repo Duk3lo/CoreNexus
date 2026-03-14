@@ -23,8 +23,7 @@ public class WatcherManager {
         return instance;
     }
 
-    public void addWatcher(NexusConfig.@NotNull Watcher config) {
-
+    public void addWatcher(String watcherName, NexusConfig.@NotNull Watcher config) {
         if (!config.enable) {
             return;
         }
@@ -34,30 +33,32 @@ public class WatcherManager {
             return;
         }
 
+        NexusConfig mainConfig = WorkspaceSetup.getNexus().getConfig();
+        boolean isMainWatcher = watcherName.equals(WorkspaceSetup.getDefaultWatchPrefix());
         Path sourcePath = WorkspaceSetup.resolve(config.path);
+        Path destPath = WorkspaceSetup.resolve(config.path_destination);
 
         if (Files.exists(sourcePath)) {
             watchers.computeIfAbsent(sourcePath, k -> {
                 Core.atInfo(Log.WATCHER).log("Iniciando vigilancia ORIGEN: " + k.getFileName());
-                DirectoryWatcher watcher = new DirectoryWatcher(k, Path.of(config.path_destination), true, config);
+                DirectoryWatcher watcher = new DirectoryWatcher(k, destPath, true, config, mainConfig, isMainWatcher);
                 watcher.start();
                 return watcher;
             });
         } else {
             Core.atError(Log.WATCHER).log("La ruta de origen no existe: " + sourcePath);
         }
-        if (config.bidirectional_sync && config.path_destination != null && !config.path_destination.trim().isEmpty()) {
-            Path destPath = WorkspaceSetup.resolve(config.path_destination);
 
+        if (config.bidirectional_sync && destPath != null) {
             if (Files.exists(destPath)) {
                 watchers.computeIfAbsent(destPath, k -> {
                     Core.atInfo(Log.WATCHER).log("Iniciando vigilancia ESPEJO (Sync): " + k.getFileName());
-                    DirectoryWatcher syncWatcher = new DirectoryWatcher(k, sourcePath, false, config);
+                    DirectoryWatcher syncWatcher = new DirectoryWatcher(k, sourcePath, false, config, mainConfig, false);
                     syncWatcher.start();
                     return syncWatcher;
                 });
             } else {
-                Core.atWarning(Log.WATCHER).log("No se pudo iniciar Sync: La ruta destino no existe físicamente.");
+                Core.atWarning(Log.WATCHER).log("No se pudo iniciar Sync: La ruta destino no existe físicamente: " + destPath);
             }
         }
     }
@@ -69,12 +70,6 @@ public class WatcherManager {
             dw.stop();
             Core.atInfo(Log.WATCHER).log("Vigilante en " + pathStr + " detenido con éxito.");
         }
-    }
-
-    public DirectoryWatcher getWatcher(NexusConfig.Watcher config) {
-        if (config == null || config.path == null) return null;
-        Path sourcePath = Path.of(config.path).toAbsolutePath().normalize();
-        return watchers.get(sourcePath);
     }
 
     public void stopAll() {

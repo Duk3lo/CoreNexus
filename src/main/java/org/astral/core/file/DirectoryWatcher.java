@@ -25,20 +25,19 @@ public class DirectoryWatcher {
     private final Set<Path> ignoreEvents = Collections.newSetFromMap(new ConcurrentHashMap<>());
     private final String folderName;
 
+    private final NexusConfig mainConfig;
+    private final boolean isMainWatcher;
     private final NexusConfig.Watcher config;
     private final Set<String> allowedExtensions;
     private final boolean watchAll;
 
-    public DirectoryWatcher(@NotNull Path directory, Path targetDirectory, boolean isSource, NexusConfig.@NotNull Watcher config) {
+    public DirectoryWatcher(@NotNull Path directory, Path targetDirectory, boolean isSource,
+                            NexusConfig.@NotNull Watcher config, NexusConfig mainConfig, boolean isMainWatcher) {
         this.directory = directory.toAbsolutePath().normalize();
-
-        if (targetDirectory != null && !targetDirectory.toString().trim().isEmpty()) {
-            this.targetDirectory = targetDirectory.toAbsolutePath().normalize();
-        } else {
-            this.targetDirectory = null;
-        }
-
+        this.targetDirectory = targetDirectory;
         this.config = config;
+        this.mainConfig = mainConfig;
+        this.isMainWatcher = isMainWatcher;
         this.folderName = directory.getFileName().toString();
         this.threadName = "Watcher-" + (isSource ? "Src-" : "Dest-") + folderName;
 
@@ -64,24 +63,12 @@ public class DirectoryWatcher {
             Core.atInfo(Log.WATCHER, folderName).log("  -> Destino: NO CONFIGURADO");
         }
         Core.atInfo(Log.WATCHER, folderName).log("---------------------------------------------------------");
-        boolean hasFiles = false;
-        try (DirectoryStream<Path> stream = Files.newDirectoryStream(directory)) {
-            for (Path entry : stream) {
-                if (!hasFiles) {
-                    Core.atInfo(Log.WATCHER, folderName).log("Contenido actual de la carpeta:");
-                    hasFiles = true;
-                }
-                String type = Files.isDirectory(entry) ? "DIR " : "FILE";
-                long size = getRealSize(entry);
-                Core.atInfo(Log.WATCHER, folderName).log(String.format("  -> [%s] %-25s | %s",
-                        type, entry.getFileName(), formatSize(size)));
-            }
-        } catch (IOException ignored) {}
-        if (!hasFiles) {
-            Core.atInfo(Log.WATCHER, folderName).log("  (Carpeta de origen vacía)");
-        }
 
-        Core.atInfo(Log.WATCHER, folderName).log("---------------------------------------------------------");
+        if (config.copy_on_start) {
+            Core.atInfo(Log.WATCHER, folderName).log("Ejecutando copia inicial (copy_on_start)...");
+            boolean cleanDest = isMainWatcher && mainConfig.clearDefaultDestination;
+            performInitialSync(cleanDest, true);
+        }
 
         watcherThread = new Thread(this::watchLoop, threadName);
         watcherThread.setDaemon(true);
@@ -115,6 +102,9 @@ public class DirectoryWatcher {
                             if (Files.isDirectory(source)) {
                                 if (!Files.exists(destination)) Files.createDirectories(destination);
                             } else {
+                                if(destination.getParent() != null && !Files.exists(destination.getParent())) {
+                                    Files.createDirectories(destination.getParent());
+                                }
                                 Files.copy(source, destination, StandardCopyOption.REPLACE_EXISTING);
                             }
                         } catch (IOException e) {
@@ -180,8 +170,10 @@ public class DirectoryWatcher {
     }
 
     private boolean shouldApplyActions(String fileName) {
-        if (config.apply_Actions_Only == null || config.apply_Actions_Only.trim().isEmpty()) return false;
-        String[] exts = config.apply_Actions_Only.toLowerCase().split("\\s+");
+        if (!isMainWatcher) return false;
+        if (mainConfig.apply_Actions_Only == null || mainConfig.apply_Actions_Only.trim().isEmpty()) return false;
+
+        String[] exts = mainConfig.apply_Actions_Only.toLowerCase().split("\\s+");
         String lowerName = fileName.toLowerCase();
         for (String ext : exts) {
             if (lowerName.endsWith(ext)) return true;
@@ -231,7 +223,7 @@ public class DirectoryWatcher {
 
             if (shouldApplyActions(filePath.getFileName().toString())) {
                 Core.atInfo(Log.WATCHER, folderName).log("Ejecutando secuencia de acciones para: " + filePath.getFileName());
-                for (NexusConfig.ActionType action : config.actions) {
+                for (NexusConfig.ActionType action : mainConfig.actions) {
                     performAction(action, filePath, targetPath);
                 }
                 Core.atInfo(Log.WATCHER, folderName).log("Secuencia completada con éxito (" + formatSize(size) + ") -> " + relativePath);
@@ -348,6 +340,9 @@ public class DirectoryWatcher {
                 }
                 case COPY -> {
                     Core.atInfo(Log.WATCHER, folderName).log("  [Acción] Copiando nueva versión al servidor...");
+                    if (target.getParent() != null && !Files.exists(target.getParent())) {
+                        Files.createDirectories(target.getParent());
+                    }
                     Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
                 }
                 case START_SERVER -> {

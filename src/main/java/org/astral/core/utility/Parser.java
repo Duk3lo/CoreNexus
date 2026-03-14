@@ -2,7 +2,7 @@ package org.astral.core.utility;
 
 public final class Parser {
     public static long parseTime(String timeStr) {
-        if (timeStr == null || timeStr.trim().isEmpty()) return 3600000; // 1h default
+        if (timeStr == null || timeStr.trim().isEmpty()) return 3600000;
         timeStr = timeStr.trim().toUpperCase();
         try {
             long multiplier = 1;

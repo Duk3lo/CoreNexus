@@ -9,34 +9,40 @@ public class NexusConfig {
     public String server_path = "";
     public String jar_name = "";
     public String args = "--assets ../Assets.zip";
-    public boolean defaultPaste = true;
     public boolean clearDefaultDestination = false;
+
+    public String apply_Actions_Only = ".jar";
+    public List<ActionType> actions = new ArrayList<>();
+
     public Map<String, Watcher> watchers = new LinkedHashMap<>();
 
-
     public NexusConfig() {
+        actions.add(ActionType.STOP_SERVER);
+        actions.add(ActionType.DELETE);
+        actions.add(ActionType.COPY);
+        actions.add(ActionType.START_SERVER);
+
         Watcher defaultWatcher = createWatcher(
                 WorkspaceSetup.getLocalModsPath().toString(),
-                "",
-                true
+                ""
         );
         watchers.put(WorkspaceSetup.getDefaultWatchPrefix(), defaultWatcher);
     }
 
     public static class Watcher {
-        public boolean enable; //Habilita o desabilita el watcher
+        public boolean enable; // Habilita o desabilita el watcher
         public String path; // Ruta donde el watcher lo sincronizara a la ruta destinataria
         public String path_destination; // Ruta en la cual se enviaran los archivos
         public boolean path_listen_Folders; // Util para escuchar más carpetas dentro de carpetas recursivamente
         public String filter_extensions; // filtro para enviar y recibir solo los archivos definidos
-        public boolean bidirectional_sync; // Sincroniza la carpeta de mods del servidor con la del watcher y conjuntamente obtienen los mismos archivos con respecto a sus configuraciones definidas aquí por lo general si es desde el destino hacia el path, pero sí se elimina una carpeta desde el path y está activada la opción path_listen_Folders y la opción path_safe_delete se detendrá y se eliminará
-        public boolean path_safe_delete; //detiene el servidor elimina el archivo destino y vuelve a iniciar el server
-        public String apply_Actions_Only; // Se aplicarán las acciones al servidor cuando el tipo de extension de aquí cambie su estado
-        public List<ActionType> actions = new ArrayList<>(); // Las acciones que se realizara cuando ApplyActionsOnly cambie su estado
+        public boolean bidirectional_sync; // Sincroniza la carpeta de mods del servidor...
+        public boolean path_safe_delete; // detiene el servidor elimina el archivo destino y vuelve a iniciar el server
+        public boolean copy_on_start; // Copia automáticamente a la carpeta destino cuando se registra o inicia el watcher
+
         public Watcher(){}
     }
 
-    public static @NotNull Watcher createWatcher(String sourcePath, String destinationPath, boolean withDefaultActions) {
+    public static @NotNull Watcher createWatcher(String sourcePath, String destinationPath) {
         Watcher w = new Watcher();
         w.enable = true;
         w.path = sourcePath;
@@ -45,14 +51,7 @@ public class NexusConfig {
         w.path_safe_delete = true;
         w.path_listen_Folders = false;
         w.filter_extensions = ".*";
-        w.apply_Actions_Only = ".jar";
-
-        if (withDefaultActions) {
-            w.actions.add(ActionType.STOP_SERVER);
-            w.actions.add(ActionType.DELETE);
-            w.actions.add(ActionType.COPY);
-            w.actions.add(ActionType.START_SERVER);
-        }
+        w.copy_on_start = true;
         return w;
     }
 
@@ -62,5 +61,4 @@ public class NexusConfig {
         STOP_SERVER,
         START_SERVER
     }
-
 }

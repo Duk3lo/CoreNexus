@@ -5,6 +5,7 @@ import org.astral.core.api.Updater;
 import org.astral.core.api.curseforge.CurseForgeAPI;
 import org.astral.core.api.github.GItHubApi;
 import org.astral.core.config.ConfigService;
+import org.astral.core.config.curseforge.CurseForgeConfig;
 import org.astral.core.config.nexus.HealingConfig;
 import org.astral.core.config.nexus.NexusConfig;
 import org.astral.core.config.nexus.UpdatesConfig;
@@ -15,17 +16,53 @@ import org.astral.core.logger.Log;
 import org.astral.core.process.Server;
 import org.astral.core.setup.WorkspaceSetup;
 import org.jetbrains.annotations.NotNull;
+import org.jline.reader.LineReader;
+import org.jline.reader.LineReaderBuilder;
+import org.jline.reader.impl.history.DefaultHistory;
+import org.jline.terminal.Terminal;
+import org.jline.terminal.TerminalBuilder;
 
+import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
-import java.util.Scanner;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Map;
+import java.util.logging.Logger;
 
 public class CommandTerminal {
     private static CommandTerminal instance;
     private PrintWriter currentWriter;
     private Process currentProcess;
+    private LineReader reader;
 
-    private CommandTerminal() {}
+    private CommandTerminal() {
+        Logger.getLogger("org.jline").setLevel(java.util.logging.Level.OFF);
+        Terminal terminal = null;
+        try {
+            terminal = TerminalBuilder.builder()
+                    .system(true)
+                    .build();
+        } catch (Exception e) {
+            try {
+                terminal = TerminalBuilder.builder()
+                        .dumb(true)
+                        .build();
+                Core.atError(Log.SYSTEM).log("Advertencia: Usando terminal básica (Dumb Terminal) por falta de permisos nativos.");
+            } catch (IOException ex) {
+                Core.atError(Log.SYSTEM).log("Error crítico: No se pudo crear ningún tipo de terminal.");
+            }
+        }
+
+        if (terminal != null) {
+            this.reader = LineReaderBuilder.builder()
+                    .terminal(terminal)
+                    .history(new DefaultHistory())
+                    .variable(LineReader.SECONDARY_PROMPT_PATTERN, "%M%P > ")
+                    .build();
+            Core.setLineReader(this.reader);
+        }
+    }
 
     public static CommandTerminal getInstance() {
         if (instance == null) instance = new CommandTerminal();
@@ -40,21 +77,27 @@ public class CommandTerminal {
 
     public void startListening() {
         Thread terminalThread = new Thread(() -> {
-            Scanner scanner = new Scanner(System.in);
-            Core.atInfo(Log.SYSTEM).log("Consola de comandos global iniciada.");
+            Core.atInfo(Log.SYSTEM).log("Consola avanzada activa.");
+            String prompt = "\u001B[32mcore > \u001B[0m";
             while (true) {
                 try {
-                    if (scanner.hasNextLine()) {
-                        String input = scanner.nextLine().trim();
-                        if (input.isEmpty()) continue;
-                        if (isInternalCommand(input)) {
-                            handleCoreCommand(input);
-                        } else {
-                            sendToProcess(input);
-                        }
+                    String input = reader.readLine(prompt);
+
+                    if (input == null) break;
+                    input = input.trim();
+                    if (input.isEmpty()) continue;
+
+                    if (isInternalCommand(input)) {
+                        handleCoreCommand(input);
+                    } else {
+                        sendToProcess(input);
                     }
+                } catch (org.jline.reader.UserInterruptException e) {
+                    shutdownSystem();
+                } catch (org.jline.reader.EndOfFileException e) {
+                    break;
                 } catch (Exception e) {
-                    Core.atError(Log.SYSTEM).log("Error en terminal: " + e.getMessage());
+                    Core.atError(Log.SYSTEM).log("Fallo en lectura: " + e.getMessage());
                 }
             }
         }, "Global-Terminal");
@@ -205,6 +248,7 @@ public class CommandTerminal {
     private void handleCurseForgeCommand(@NotNull String sub, @NotNull String args) {
         CurseForgeAPI cfApi = CurseForgeAPI.getInstance();
         String query = args.trim();
+        CurseForgeConfig cfg = WorkspaceSetup.getCurseForge().getConfig();
 
         switch (sub) {
             case "sync-all" -> cfApi.syncAll();
@@ -229,7 +273,64 @@ public class CommandTerminal {
                 if (query.isEmpty()) { Core.atWarning(Log.CURSEFORGE).log("Uso: restore <key|id|file>"); return; }
                 cfApi.restoreMod(query);
             }
-            default -> Core.atInfo(Log.CURSEFORGE).log("Comandos: sync-all, sync, add, remove, restore");
+
+            case "auto-search" -> {
+                if (query.isEmpty()) {
+                    Core.atWarning(Log.CURSEFORGE).log("Uso: core-curseforge auto-search <true|false>");
+                    return;
+                }
+                boolean state = Boolean.parseBoolean(query.split("\\s+")[0]);
+                cfg.auto_search_untracked_mods = state;
+                WorkspaceSetup.getCurseForge().save();
+                Core.atInfo(Log.CURSEFORGE).log("Búsqueda automática de mods " + (state ? "ACTIVADA" : "DESACTIVADA"));
+            }
+            case "ignore" -> {
+                if (query.isEmpty()) {
+                    Core.atWarning(Log.CURSEFORGE).log("Uso: core-curseforge ignore <list|add|remove> [archivo.jar]");
+                    return;
+                }
+                String[] parts = query.split("\\s+", 2);
+                String action = parts[0].toLowerCase();
+
+                switch (action) {
+                    case "list" -> {
+                        Core.atInfo(Log.CURSEFORGE).log("--- Archivos Ignorados en CurseForge ---");
+                        if (cfg.ignored_untracked_files.isEmpty()) {
+                            Core.atInfo(Log.CURSEFORGE).log("  (Ninguno)");
+                        } else {
+                            cfg.ignored_untracked_files.forEach(f -> Core.atInfo(Log.CURSEFORGE).log("  - " + f));
+                        }
+                    }
+                    case "add" -> {
+                        if (parts.length < 2) {
+                            Core.atWarning(Log.CURSEFORGE).log("Especifica el archivo: ignore add <archivo.jar>");
+                            return;
+                        }
+                        if (!cfg.ignored_untracked_files.contains(parts[1])) {
+                            cfg.ignored_untracked_files.add(parts[1]);
+                            WorkspaceSetup.getCurseForge().save();
+                            Core.atInfo(Log.CURSEFORGE).log("Archivo '" + parts[1] + "' añadido a la lista de ignorados.");
+                        } else {
+                            Core.atWarning(Log.CURSEFORGE).log("El archivo ya estaba en la lista de ignorados.");
+                        }
+                    }
+                    case "remove" -> {
+                        if (parts.length < 2) {
+                            Core.atWarning(Log.CURSEFORGE).log("Especifica el archivo: ignore remove <archivo.jar>");
+                            return;
+                        }
+                        if (cfg.ignored_untracked_files.remove(parts[1])) {
+                            WorkspaceSetup.getCurseForge().save();
+                            Core.atInfo(Log.CURSEFORGE).log("Archivo '" + parts[1] + "' removido de la lista de ignorados.");
+                        } else {
+                            Core.atWarning(Log.CURSEFORGE).log("El archivo no estaba en la lista de ignorados.");
+                        }
+                    }
+                    default -> Core.atWarning(Log.CURSEFORGE).log("Acción desconocida. Usa: add, remove, list");
+                }
+            }
+
+            default -> Core.atInfo(Log.CURSEFORGE).log("Comandos: sync-all, sync, add, remove, restore, auto-search, ignore");
         }
     }
 
@@ -263,9 +364,9 @@ public class CommandTerminal {
         }
     }
 
-    private void handleWatcherCommand(@NotNull String sub, String args, @NotNull ConfigService<NexusConfig> nexus) {
+    private void handleWatcherCommand(@NotNull String sub, @NotNull String args, @NotNull ConfigService<NexusConfig> nexus) {
         NexusConfig cfg = nexus.getConfig();
-
+        String query = args.trim();
         switch (sub) {
 
             case "enable" -> {
@@ -283,7 +384,7 @@ public class CommandTerminal {
                     nexus.save();
                     Core.atInfo(Log.WATCHER).log("Watcher '" + name + "' marcado como " + (state ? "ON" : "OFF"));
                     if (state) {
-                        WatcherManager.getInstance().addWatcher(w);
+                        WatcherManager.getInstance().addWatcher(name, w);
                     } else {
                         WatcherManager.getInstance().removeWatcher(w.path);
                         if (w.path_destination != null) {
@@ -315,37 +416,54 @@ public class CommandTerminal {
                 }
             }
             case "add" -> {
-                if (args.isEmpty()) {
-                    Core.atWarning(Log.WATCHER).log("Uso: core-watcher add <nombre> <ruta>");
+                if (query.isEmpty()) {
+                    Core.atWarning(Log.WATCHER).log("Uso: core-watcher add <ruta_u_origen> [nombre_opcional]");
                     return;
                 }
-                String[] subParts = args.split("\\s+", 2);
-                if (subParts.length < 2) {
-                    Core.atWarning(Log.WATCHER).log("Falta la ruta de destino.");
-                    return;
-                }
-                String name = subParts[0];
-                String destination = subParts[1];
 
+                String[] parts = query.split("\\s+", 2);
+                String pathStr = parts[0];
+                Path sourcePath = Path.of(pathStr).toAbsolutePath().normalize();
+                String name = (parts.length > 1) ? parts[1] : sourcePath.getFileName().toString();
+
+                if (!Files.exists(sourcePath)) {
+                    Core.atError(Log.WATCHER).log("La ruta especificada no existe: " + pathStr);
+                    return;
+                }
                 NexusConfig.Watcher newWatcher = NexusConfig.createWatcher(
-                        destination,
-                        WorkspaceSetup.relativize(WorkspaceSetup.getLocalModsPath()),
-                        true
+                        pathStr,
+                        WorkspaceSetup.relativize(WorkspaceSetup.getLocalModsPath())
                 );
+
                 cfg.watchers.put(name, newWatcher);
                 nexus.save();
-                Core.atInfo(Log.WATCHER).log("Watcher '" + name + "' agregado con éxito.");
+                WatcherManager.getInstance().addWatcher(name, newWatcher);
+                Core.atInfo(Log.WATCHER).log("✅ Watcher '" + name + "' vinculado a: " + pathStr);
             }
             case "remove" -> {
-                if (args.isEmpty()) {
-                    Core.atWarning(Log.WATCHER).log("Uso: core-watcher remove <nombre>");
+                if (query.isEmpty()) {
+                    Core.atWarning(Log.WATCHER).log("Uso: core-watcher remove <nombre|ruta|key>");
                     return;
                 }
-                if (cfg.watchers.remove(args) != null) {
+
+                String keyToRemove = null;
+                for (Map.Entry<String, NexusConfig.Watcher> entry : cfg.watchers.entrySet()) {
+                    if (entry.getKey().equalsIgnoreCase(query) ||
+                            entry.getValue().path.contains(query) ||
+                            (entry.getValue().path_destination != null && entry.getValue().path_destination.contains(query))) {
+                        keyToRemove = entry.getKey();
+                        break;
+                    }
+                }
+                if (keyToRemove != null) {
+                    NexusConfig.Watcher w = cfg.watchers.remove(keyToRemove);
                     nexus.save();
-                    Core.atInfo(Log.WATCHER).log("Watcher '" + args + "' eliminado.");
+                    WatcherManager.getInstance().removeWatcher(w.path);
+                    if (w.path_destination != null) WatcherManager.getInstance().removeWatcher(w.path_destination);
+
+                    Core.atInfo(Log.WATCHER).log("🗑️ Watcher '" + keyToRemove + "' eliminado correctamente.");
                 } else {
-                    Core.atError(Log.WATCHER).log("No se encontró el watcher: " + args);
+                    Core.atError(Log.WATCHER).log("No se encontró ningún watcher que coincida con: " + query);
                 }
             }
             default -> Core.atInfo(Log.WATCHER).log("Sub-comandos: list, add, remove");
@@ -380,12 +498,14 @@ public class CommandTerminal {
     }
 
     public static void printHelp(){
-        Core.atInfo(Log.SYSTEM).log("--- 💡 CORE COMMANDS ---");
+        Core.atInfo(Log.SYSTEM).log("--- CORE COMMANDS ---");
         Core.atInfo(Log.UPDATER).log(">> core-updater <enable|disable> <github|curseforge|server|all>");
         Core.atInfo(Log.UPDATER).log(">> core-updater restart (Aplica cambios del .yml globalmente)");
-        Core.atInfo(Log.CURSEFORGE).log(">> core-curseforge <sync|add|remove|restore> <key|id|name>");
+        Core.atInfo(Log.CURSEFORGE).log(">> core-curseforge <sync|add|remove|restore|auto-search|ignore> <args>");
         Core.atInfo(Log.GITHUB).log(">> core-github <sync|add|remove|restore> <key|user/repo>");
-        Core.atInfo(Log.WATCHER).log(">> core-watcher <list|add|remove|enable> <nombre>");
+        Core.atInfo(Log.WATCHER).log(">> core-watcher list");
+        Core.atInfo(Log.WATCHER).log(">> core-watcher add <ruta> [nombre_opcional]");
+        Core.atInfo(Log.WATCHER).log(">> core-watcher <remove|enable> <nombre|ruta|key>");
         Core.atInfo(Log.HEALTH).log(">> core-health <status|enable>");
         Core.atInfo(Log.CONFIG).log(">> core-status, core-reload, core-setjar, core-setpathserver");
         Core.atInfo(Log.SERVER).log(">> start-server, stop-server, exit-core");

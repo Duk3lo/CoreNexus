@@ -79,8 +79,9 @@ public final class WorkspaceSetup {
         nexus.load();
         if (applyAutoDetection()) {
             nexus.save();
-            Core.atInfo(Log.CONFIG).log("Configuración completada automáticamente basándose en server_path.");
+            Core.atInfo(Log.CONFIG).log("Configuración completada automáticamente y guardada en config.yml.");
         }
+
         curseForge = new ConfigService<>(CurseForgeConfig.class, "curseforge.yml", CurseForgeConfig::new, curseForgePath);
         curseForge.load();
 
@@ -99,34 +100,54 @@ public final class WorkspaceSetup {
         NexusConfig cfg = nexus.getConfig();
         boolean modified = false;
         Path currentExecPath = workspacePath.getParent();
-        if (cfg.server_path == null || cfg.server_path.isEmpty()) {
+        if (cfg.server_path == null || cfg.server_path.trim().isEmpty()) {
             Path potentialServer = currentExecPath.resolve("Server");
+            if (!Files.exists(potentialServer)) potentialServer = currentExecPath.resolve("server");
+
             if (Files.exists(potentialServer) && Files.isDirectory(potentialServer)) {
-                cfg.server_path = potentialServer.toAbsolutePath().toString();
-                modified = true;
-                Core.atInfo(Log.CONFIG).log("Carpeta 'Server' detectada automáticamente.");
+                cfg.server_path = potentialServer.toAbsolutePath().normalize().toString();
             } else {
-                cfg.server_path = currentExecPath.toAbsolutePath().toString();
-                modified = true;
+                cfg.server_path = currentExecPath.toAbsolutePath().normalize().toString();
+            }
+            modified = true;
+        }
+
+        Path serverPath = Path.of(cfg.server_path);
+        if (Files.isDirectory(serverPath)) {
+            if (tryAutoDetectJar(serverPath.toString()).isEmpty()) {
+                Path subServer = serverPath.resolve("server");
+                if (!Files.exists(subServer)) subServer = serverPath.resolve("Server");
+
+                if (Files.exists(subServer) && Files.isDirectory(subServer)) {
+                    cfg.server_path = subServer.toAbsolutePath().normalize().toString();
+                    serverPath = subServer;
+                    modified = true;
+                    Core.atInfo(Log.CONFIG).log("Ruta del servidor auto-ajustada profundizando a: " + cfg.server_path);
+                }
             }
         }
-        Path serverPath = Path.of(cfg.server_path);
-        if (cfg.jar_name == null || cfg.jar_name.isEmpty()) {
+
+        if (cfg.jar_name == null || cfg.jar_name.trim().isEmpty()) {
             String detectedJar = tryAutoDetectJar(serverPath.toString());
             if (!detectedJar.isEmpty()) {
                 cfg.jar_name = detectedJar;
                 modified = true;
-                Core.atInfo(Log.CONFIG).log("JAR detectado: " + cfg.jar_name);
+                Core.atInfo(Log.CONFIG).log("JAR detectado automáticamente: " + cfg.jar_name);
             }
         }
+
         NexusConfig.Watcher w = cfg.watchers.get(DefaultWatchPrefix);
         if (w != null) {
-            if (w.path_destination == null || w.path_destination.equals("./SyncMods") || w.path_destination.isEmpty()) {
-                String detectedMods = tryAutoDetectModsServer(serverPath.toString());
-                if (!detectedMods.isEmpty()) {
-                    w.path_destination = relativize(Path.of(detectedMods));
-                    modified = true;
-                    Core.atInfo(Log.CONFIG).log("Carpeta de mods vinculada: " + w.path_destination);
+            if (w.path_destination == null || w.path_destination.trim().isEmpty() || w.path_destination.equals("./SyncMods")) {
+                Path modsFolder = serverPath.resolve("mods");
+                w.path_destination = modsFolder.toAbsolutePath().normalize().toString();
+                modified = true;
+                Core.atInfo(Log.CONFIG).log("Ruta destino del Watcher principal ajustada a: " + w.path_destination);
+                if (!Files.exists(modsFolder)) {
+                    try {
+                        Files.createDirectories(modsFolder);
+                        Core.atInfo(Log.SYSTEM).log("Se creó la carpeta mods en el servidor: " + modsFolder);
+                    } catch (IOException ignored) {}
                 }
             }
         }
@@ -141,7 +162,7 @@ public final class WorkspaceSetup {
             Files.createDirectories(curseForgePath);
             Files.createDirectories(githubPath);
 
-            Core.atInfo(Log.SYSTEM).log("⚓ Entorno CoreNexus preparado:");
+            Core.atInfo(Log.SYSTEM).log("Entorno CoreNexus preparado:");
             Core.atInfo(Log.SYSTEM).log("  -> [RAÍZ]  : " + workspacePath.toAbsolutePath());
             Core.atInfo(Log.SYSTEM).log("  -> [MODS]  : " + localModsPath.toAbsolutePath());
             Core.atInfo(Log.SYSTEM).log("---------------------------------------------------------");
@@ -152,6 +173,9 @@ public final class WorkspaceSetup {
 
     public static Path resolve(String rawPath) {
         if (rawPath == null || rawPath.trim().isEmpty()) return null;
+        if (rawPath.startsWith("./") || rawPath.startsWith(".\\")) {
+            return workspacePath.resolve(rawPath.substring(2)).toAbsolutePath().normalize();
+        }
         Path path = Path.of(rawPath);
         if (!path.isAbsolute()) {
             return workspacePath.resolve(path).toAbsolutePath().normalize();
@@ -193,10 +217,12 @@ public final class WorkspaceSetup {
     public static Path getCurseForgeDownloadsPath() { return curseForgeDownloadsPath; }
     public static Path getCurseForgeBackupPath() { return curseForgeBackupPath; }
 
-
     public static String tryAutoDetectJar(String specificPath) {
-        if (specificPath == null || specificPath.isEmpty()) return "";
-        try (Stream<Path> stream = Files.list(Path.of(specificPath))) {
+        if (specificPath == null || specificPath.trim().isEmpty()) return "";
+        Path path = Path.of(specificPath);
+        if (!Files.exists(path) || !Files.isDirectory(path)) return "";
+
+        try (Stream<Path> stream = Files.list(path)) {
             return stream
                     .map(p -> p.getFileName().toString())
                     .filter(name -> name.toLowerCase().endsWith(".jar"))
@@ -207,14 +233,6 @@ public final class WorkspaceSetup {
         } catch (IOException e) {
             return "";
         }
-    }
-
-    public static @NotNull String tryAutoDetectModsServer(String specificPath) {
-        if (specificPath == null || specificPath.isEmpty()) return "";
-        Path modsFolder = Path.of(specificPath).resolve("mods");
-        return (Files.exists(modsFolder) && Files.isDirectory(modsFolder))
-                ? modsFolder.toAbsolutePath().toString()
-                : "";
     }
 
     public static String getDefaultWatchPrefix() {return DefaultWatchPrefix;}

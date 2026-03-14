@@ -5,6 +5,7 @@ import org.astral.core.command.CommandExecutor;
 import org.astral.core.healing.HealthMonitor;
 import org.astral.core.logger.Core;
 import org.astral.core.logger.Log;
+import org.jetbrains.annotations.NotNull;
 
 import java.io.*;
 import java.util.ArrayList;
@@ -36,18 +37,15 @@ public final class Server {
             Core.atError(Log.SERVER).log("No se encontró " + jar + " en: " + directory.getAbsolutePath());
             return;
         }
-
         instance = new Server(directory, jar, args);
         Core.atInfo(Log.SERVER).log("Nueva instancia de servidor iniciada.");
     }
 
     private Server(File directory, String jarName, String args) {
-
         List<String> cmd = new ArrayList<>();
         cmd.add("java");
         cmd.add("-jar");
         cmd.add(jarName);
-
         if (args != null && !args.isEmpty()) {
             String[] splitArgs = args.split(" ");
             for (String arg : splitArgs) {
@@ -56,14 +54,21 @@ public final class Server {
                 }
             }
         }
-
         this.executor = new CommandExecutor<>(cmd, directory);
-        this.executor.run(line -> line, line -> {
-            Core.atInfo(Log.SERVER).log(line);
-            HealthMonitor.getInstance().processServerLog(line);
-            Updater.getInstance().processServerLogForUpdates(line);
+        this.executor.run(line -> line, rawLine -> {
+            String cleanLine = cleanAnsi(rawLine).trim();
+            if (!cleanLine.isEmpty()) {
+                Core.atInfo(Log.SERVER).log(cleanLine);
+                HealthMonitor.getInstance().processServerLog(cleanLine);
+                Updater.getInstance().processServerLogForUpdates(cleanLine);
+            }
         });
         HealthMonitor.getInstance().notifyServerStarted();
+    }
+
+    private @NotNull String cleanAnsi(String text) {
+        if (text == null) return "";
+        return text.replaceAll("\u001B\\[[;\\d]*[A-Za-z]", "");
     }
 
     public CommandExecutor<String> getExecutor() {

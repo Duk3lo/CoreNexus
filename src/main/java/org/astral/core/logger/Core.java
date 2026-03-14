@@ -2,6 +2,7 @@ package org.astral.core.logger;
 
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.jline.reader.LineReader;
 
 import java.awt.Color;
 import java.time.LocalTime;
@@ -9,6 +10,11 @@ import java.time.format.DateTimeFormatter;
 
 public final class Core {
     private static final String RESET = "\u001B[0m";
+    private static LineReader lineReader;
+
+    public static void setLineReader(LineReader reader) {
+        lineReader = reader;
+    }
 
     public static @NotNull LogBuilder atInfo(Log context) { return new LogBuilder(context, null, "INFO"); }
     public static @NotNull LogBuilder atWarning(Log context) { return new LogBuilder(context, null, "WARN"); }
@@ -31,26 +37,37 @@ public final class Core {
         }
 
         public void log(String message) { print(message, false); }
+
         public void update(String message) { print(message, true); }
 
         private void print(String message, boolean isUpdate) {
+            if (message == null || message.trim().isEmpty()) {
+                return;
+            }
             String time = LocalTime.now().format(timeFormat);
-            String prefix = isUpdate ? "\r" : "";
-            String suffix = isUpdate ? "" : "\n";
-
             String fullLabel = (subContext == null) ? context.label : context.label + ":" + subContext;
             Color levelColor = switch (level) {
                 case "ERROR" -> Color.RED;
                 case "WARN" -> Color.YELLOW;
                 default -> context.color;
             };
-
             String contextAnsi = toAnsi(context.color);
             String levelAnsi = toAnsi(levelColor);
-
-            System.out.printf("%s[%s] %s[%s]%s [%s%s%s]: %s%s",
+            String prefix = isUpdate ? "\r" : "";
+            String cleanMessage = message.trim();
+            String formatted = String.format("%s[%s] %s[%s]%s [%s%s%s]: %s",
                     prefix, time, contextAnsi, fullLabel, RESET,
-                    levelAnsi, level, RESET, message, suffix);
+                    levelAnsi, level, RESET, cleanMessage);
+            if (lineReader != null) {
+                lineReader.printAbove(formatted);
+            } else {
+                if (isUpdate) {
+                    System.out.print(formatted);
+                    System.out.flush();
+                } else {
+                    System.out.println(formatted);
+                }
+            }
         }
 
         private @NotNull String toAnsi(@NotNull Color color) {
