@@ -107,7 +107,7 @@ public class CommandTerminal {
             }
 
             case "core-reload" -> {
-                Core.atInfo(Log.SYSTEM).log("♻️ Reiniciando sistema integral...");
+                Core.atInfo(Log.SYSTEM).log("Reiniciando sistema integral...");
                 if (Server.getInstance() != null) Server.getInstance().stopServer();
                 WatcherManager.getInstance().stopAll();
                 HealthMonitor.getInstance().stop();
@@ -158,7 +158,7 @@ public class CommandTerminal {
         Updater updater = Updater.getInstance();
         if (sub.equalsIgnoreCase("restart")) {
             updater.restart();
-            Core.atInfo(Log.UPDATER).log("♻️ Todos los schedulers de actualización han sido reiniciados.");
+            Core.atInfo(Log.UPDATER).log("Todos los schedulers de actualización han sido reiniciados.");
             return;
         }
         if (args.isEmpty()) {
@@ -198,7 +198,7 @@ public class CommandTerminal {
 
         if (modified) {
             WorkspaceSetup.getUpdates().save();
-            Core.atInfo(Log.UPDATER).log("✅ " + target.toUpperCase() + (enable ? " habilitado y guardado." : " deshabilitado y guardado."));
+            Core.atInfo(Log.UPDATER).log(target.toUpperCase() + (enable ? " habilitado y guardado." : " deshabilitado y guardado."));
         }
     }
 

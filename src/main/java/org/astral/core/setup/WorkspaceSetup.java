@@ -97,32 +97,36 @@ public final class WorkspaceSetup {
     public static boolean applyAutoDetection() {
         if (nexus == null || nexus.getConfig() == null) return false;
         NexusConfig cfg = nexus.getConfig();
-        if (cfg.server_path == null || cfg.server_path.isEmpty()) return false;
         boolean modified = false;
-        Path serverPath = Path.of(cfg.server_path);
-        if (!hasServerJar(serverPath)) {
-            Path subServer = serverPath.resolve("Server");
-            if (hasServerJar(subServer)) {
-                cfg.server_path = subServer.toAbsolutePath().toString();
-                serverPath = subServer;
+        Path currentExecPath = workspacePath.getParent();
+        if (cfg.server_path == null || cfg.server_path.isEmpty()) {
+            Path potentialServer = currentExecPath.resolve("Server");
+            if (Files.exists(potentialServer) && Files.isDirectory(potentialServer)) {
+                cfg.server_path = potentialServer.toAbsolutePath().toString();
                 modified = true;
-                Core.atInfo(Log.CONFIG).log("Ruta de servidor ajustada a subcarpeta: " + cfg.server_path);
+                Core.atInfo(Log.CONFIG).log("Carpeta 'Server' detectada automáticamente.");
+            } else {
+                cfg.server_path = currentExecPath.toAbsolutePath().toString();
+                modified = true;
             }
         }
-        if (cfg.jar_name == null || cfg.jar_name.isEmpty() || cfg.jar_name.equals("HytaleServer.jar")) {
+        Path serverPath = Path.of(cfg.server_path);
+        if (cfg.jar_name == null || cfg.jar_name.isEmpty()) {
             String detectedJar = tryAutoDetectJar(serverPath.toString());
-            if (!detectedJar.isEmpty() && !detectedJar.equals(cfg.jar_name)) {
+            if (!detectedJar.isEmpty()) {
                 cfg.jar_name = detectedJar;
                 modified = true;
+                Core.atInfo(Log.CONFIG).log("JAR detectado: " + cfg.jar_name);
             }
         }
         NexusConfig.Watcher w = cfg.watchers.get(DefaultWatchPrefix);
         if (w != null) {
-            if (w.path_destination == null || w.path_destination.isEmpty()) {
+            if (w.path_destination == null || w.path_destination.equals("./SyncMods") || w.path_destination.isEmpty()) {
                 String detectedMods = tryAutoDetectModsServer(serverPath.toString());
                 if (!detectedMods.isEmpty()) {
-                    w.path_destination = detectedMods;
+                    w.path_destination = relativize(Path.of(detectedMods));
                     modified = true;
+                    Core.atInfo(Log.CONFIG).log("Carpeta de mods vinculada: " + w.path_destination);
                 }
             }
         }
@@ -192,7 +196,6 @@ public final class WorkspaceSetup {
 
     public static String tryAutoDetectJar(String specificPath) {
         if (specificPath == null || specificPath.isEmpty()) return "";
-
         try (Stream<Path> stream = Files.list(Path.of(specificPath))) {
             return stream
                     .map(p -> p.getFileName().toString())
@@ -203,20 +206,6 @@ public final class WorkspaceSetup {
                     .orElse("");
         } catch (IOException e) {
             return "";
-        }
-    }
-
-    private static boolean hasServerJar(Path dir) {
-        if (dir == null || !Files.exists(dir) || !Files.isDirectory(dir)) return false;
-        try (Stream<Path> stream = Files.list(dir)) {
-            return stream.anyMatch(p -> {
-                String name = p.getFileName().toString().toLowerCase();
-                return name.endsWith(".jar") &&
-                        (name.contains("hytale") || name.contains("server")) &&
-                        !name.contains("corenexus");
-            });
-        } catch (IOException e) {
-            return false;
         }
     }
 

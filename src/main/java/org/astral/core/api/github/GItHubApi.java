@@ -90,7 +90,7 @@ public class GItHubApi extends BaseModDownloader {
         githubCfg.resources.put(key, newResource);
         WorkspaceSetup.getGithub().save();
 
-        Core.atInfo(Log.GITHUB).log("✅ Registrado: " + repoSlug + " como '" + key + "'. Sincronizando...");
+        Core.atInfo(Log.GITHUB).log("Registrado: " + repoSlug + " como '" + key + "'. Sincronizando...");
         syncRepo(key);
     }
 
@@ -131,11 +131,11 @@ public class GItHubApi extends BaseModDownloader {
         if (targetKey != null) {
             githubCfg.resources.remove(targetKey);
             WorkspaceSetup.getGithub().save();
-            Core.atInfo(Log.GITHUB).log("🗑️ Repositorio eliminado: '" + targetKey + "'");
+            Core.atInfo(Log.GITHUB).log("Repositorio eliminado: '" + targetKey + "'");
         } else {
             Core.atWarning(Log.GITHUB).log("No se encontró el repositorio GitHub: " + query);
             Core.atInfo(Log.GITHUB).log("--- Repositorios registrados ---");
-            githubCfg.resources.forEach((key, res) -> Core.atInfo(Log.GITHUB).log(" 📌 Key: " + key + " | Repo: " + res.repo_slug + " | Archivo: " + res.local_file_name));
+            githubCfg.resources.forEach((key, res) -> Core.atInfo(Log.GITHUB).log("Key: " + key + " | Repo: " + res.repo_slug + " | Archivo: " + res.local_file_name));
             Core.atInfo(Log.GITHUB).log("--------------------------------");
         }
     }
@@ -182,14 +182,14 @@ public class GItHubApi extends BaseModDownloader {
 
             if (remoteTag.equals(resource.local_version_tag) && fileExists) {
                 if (resource.verify_file_integrity && resource.last_verified_hash != null && !resource.last_verified_hash.isEmpty()) {
-                    Core.atInfo(Log.GITHUB).log("🔍 Verificando integridad local de '" + modKey + "' (SHA-256)...");
+                    Core.atInfo(Log.GITHUB).log("Verificando integridad local de '" + modKey + "' (SHA-256)...");
                     String currentHash = calculateFileHash(localFile);
 
                     if (currentHash.equalsIgnoreCase(resource.last_verified_hash)) {
-                        Core.atInfo(Log.GITHUB).log("✅ El archivo GitHub está íntegro y al día.");
+                        Core.atInfo(Log.GITHUB).log("El archivo GitHub está íntegro y al día.");
                         return true;
                     } else {
-                        Core.atWarning(Log.GITHUB).log("⚠️ El archivo local de GitHub no coincide con el hash guardado. Re-descargando...");
+                        Core.atWarning(Log.GITHUB).log("El archivo local de GitHub no coincide con el hash guardado. Re-descargando...");
                     }
                 } else {
                     Core.atInfo(Log.GITHUB).log("El mod " + resource.repo_slug + " ya está al día.");
@@ -220,7 +220,7 @@ public class GItHubApi extends BaseModDownloader {
             String newHash = "";
             if (resource.verify_file_integrity) {
                 newHash = calculateFileHash(downloadedFile);
-                Core.atInfo(Log.GITHUB).log("✅ Hash SHA-256 generado para futuras verificaciones.");
+                Core.atInfo(Log.GITHUB).log("Hash SHA-256 generado para futuras verificaciones.");
             }
 
             performBackupAndReplace(

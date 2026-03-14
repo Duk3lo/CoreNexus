@@ -41,7 +41,7 @@ public class CurseForgeAPI extends BaseModDownloader {
     public void connect(String apiKey) {
         this.globalApiKey = apiKey;
         if (apiKey == null || apiKey.isEmpty() || apiKey.equals("INSERT_YOUR_KEY_HERE")) {
-            Core.atWarning(Log.CURSEFORGE).log("⚠️ No se ha configurado una API Key de CurseForge válida.");
+            Core.atWarning(Log.CURSEFORGE).log("No se ha configurado una API Key de CurseForge válida.");
         } else {
             Core.atInfo(Log.CURSEFORGE).log("Conectado a CurseForge con API Key.");
         }
@@ -84,7 +84,7 @@ public class CurseForgeAPI extends BaseModDownloader {
                 String key = foundName.replaceAll("[^a-zA-Z0-9]", "_").toLowerCase();
 
                 if (cfConfig.resources.containsKey(key)) {
-                    Core.atWarning(Log.CURSEFORGE).log("⚠️ El mod ya está registrado con la clave: '" + key + "'");
+                    Core.atWarning(Log.CURSEFORGE).log("El mod ya está registrado con la clave: '" + key + "'");
                     return;
                 }
 
@@ -96,7 +96,7 @@ public class CurseForgeAPI extends BaseModDownloader {
                 cfConfig.resources.put(key, newResource);
                 WorkspaceSetup.getCurseForge().save();
 
-                Core.atInfo(Log.CURSEFORGE).log("✅ PROCEDER CON LA INSTALACIÓN: " + foundName + " (ID: " + projectId + ")");
+                Core.atInfo(Log.CURSEFORGE).log("PROCEDER CON LA INSTALACIÓN: " + foundName + " (ID: " + projectId + ")");
                 syncMod(key);
             }
 
@@ -113,12 +113,12 @@ public class CurseForgeAPI extends BaseModDownloader {
         if (targetKey != null) {
             cfConfig.resources.remove(targetKey);
             WorkspaceSetup.getCurseForge().save();
-            Core.atInfo(Log.CURSEFORGE).log("🗑️ Mod eliminado: '" + targetKey + "'");
+            Core.atInfo(Log.CURSEFORGE).log("Mod eliminado: '" + targetKey + "'");
             Core.atInfo(Log.CURSEFORGE).log("Nota: El archivo físico en el disco no ha sido eliminado.");
         } else {
             Core.atWarning(Log.CURSEFORGE).log("No se encontró ningún mod coincidente con: " + query);
             Core.atInfo(Log.CURSEFORGE).log("--- Mods registrados actualmente ---");
-            cfConfig.resources.forEach((key, res) -> Core.atInfo(Log.CURSEFORGE).log(" 📌 Key: " + key + " | ID: " + res.project_id + " | Archivo: " + res.local_file_name));
+            cfConfig.resources.forEach((key, res) -> Core.atInfo(Log.CURSEFORGE).log("Key: " + key + " | ID: " + res.project_id + " | Archivo: " + res.local_file_name));
             Core.atInfo(Log.CURSEFORGE).log("------------------------------------");
         }
     }
@@ -174,7 +174,7 @@ public class CurseForgeAPI extends BaseModDownloader {
                 Core.atInfo(Log.CURSEFORGE).log("🔎 Se encontraron varios mods para: " + modName);
                 Core.atInfo(Log.CURSEFORGE).log("========================================");
                 for (ModResult res : results) {
-                    Core.atInfo(Log.CURSEFORGE).log(" 📌 Nombre: " + res.name + "   [ID: " + res.id + "]");
+                    Core.atInfo(Log.CURSEFORGE).log("Nombre: " + res.name + "   [ID: " + res.id + "]");
                 }
                 Core.atInfo(Log.CURSEFORGE).log("----------------------------------------");
                 Core.atInfo(Log.CURSEFORGE).log("👉 Para instalar uno, copia su ID y usa:");
@@ -355,7 +355,7 @@ public class CurseForgeAPI extends BaseModDownloader {
                         Core.atInfo(Log.CURSEFORGE).log("✅ '" + modKey + "' está al día e íntegro.");
                         return true;
                     } else {
-                        Core.atWarning(Log.CURSEFORGE).log("⚠️ '" + modKey + "' parece corrupto o modificado. Re-descargando...");
+                        Core.atWarning(Log.CURSEFORGE).log(modKey + "' parece corrupto o modificado. Re-descargando...");
                     }
                 } else {
                     Core.atInfo(Log.CURSEFORGE).log("El mod " + modKey + " ya está al día.");

@@ -10,7 +10,7 @@ public class UpdatesConfig {
     public ServerUpdate server = new ServerUpdate();
 
     public static class CurseForgeUpdate {
-        public boolean enable = true;
+        public boolean enable = false;
         public String check_interval = "12H";
     }
 

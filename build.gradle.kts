@@ -1,9 +1,10 @@
 plugins {
     id("java")
+    id("com.gradleup.shadow") version "9.2.0"
 }
 
 group = "org.astral.core"
-version = "1.0-SNAPSHOT"
+version = "0.0.1"
 
 repositories {
     mavenCentral()
@@ -18,6 +19,21 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
+tasks.shadowJar {
+    archiveBaseName.set("CoreNexus")
+    archiveClassifier.set("")
+    manifest {
+        attributes["Main-Class"] = "org.astral.core.Main"
+    }
+    mergeServiceFiles()
+}
+
 tasks.test {
     useJUnitPlatform()
+}
+
+java {
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(25))
+    }
 }

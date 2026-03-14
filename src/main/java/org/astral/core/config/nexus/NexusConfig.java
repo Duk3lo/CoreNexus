@@ -17,10 +17,9 @@ public class NexusConfig {
     public NexusConfig() {
         Watcher defaultWatcher = createWatcher(
                 WorkspaceSetup.getLocalModsPath().toString(),
-                "./SyncMods",
+                "",
                 true
         );
-        defaultWatcher.bidirectional_sync = true;
         watchers.put(WorkspaceSetup.getDefaultWatchPrefix(), defaultWatcher);
     }
 
@@ -44,7 +43,7 @@ public class NexusConfig {
         w.path_destination = destinationPath;
         w.bidirectional_sync = false;
         w.path_safe_delete = true;
-        w.path_listen_Folders = true;
+        w.path_listen_Folders = false;
         w.filter_extensions = ".*";
         w.apply_Actions_Only = ".jar";
 

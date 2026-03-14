@@ -49,14 +49,14 @@ public class Updater {
                 long timeMs = Parser.parseTime(cfg.curseforge.check_interval);
 
                 curseForgeTask = scheduler.scheduleAtFixedRate(() -> {
-                    Core.atInfo(Log.UPDATER).log("🔄 Auto-Check: CurseForge...");
+                    Core.atInfo(Log.UPDATER).log("Auto-Check: CurseForge...");
                     CurseForgeAPI.getInstance().syncAll();
                 }, 10000, timeMs, TimeUnit.MILLISECONDS);
             }
         } else if (curseForgeTask != null) {
             curseForgeTask.cancel(false);
             curseForgeTask = null;
-            Core.atInfo(Log.UPDATER).log("🛑 Auto-Check CurseForge detenido.");
+            Core.atInfo(Log.UPDATER).log("Auto-Check CurseForge detenido.");
         }
     }
 
@@ -67,14 +67,14 @@ public class Updater {
                 long timeMs = Parser.parseTime(cfg.github.check_interval);
 
                 githubTask = scheduler.scheduleAtFixedRate(() -> {
-                    Core.atInfo(Log.UPDATER).log("🔄 Auto-Check: GitHub...");
+                    Core.atInfo(Log.UPDATER).log("Auto-Check: GitHub...");
                     GItHubApi.getInstance().syncAll();
                 }, 12000, timeMs, TimeUnit.MILLISECONDS);
             }
         } else if (githubTask != null) {
             githubTask.cancel(false);
             githubTask = null;
-            Core.atInfo(Log.UPDATER).log("🛑 Auto-Check GitHub detenido.");
+            Core.atInfo(Log.UPDATER).log("Auto-Check GitHub detenido.");
         }
     }
 
@@ -87,7 +87,7 @@ public class Updater {
                 serverTask = scheduler.scheduleAtFixedRate(() -> {
                     Server sv = Server.getInstance();
                     if (sv != null && sv.getExecutor().getProcess().isAlive()) {
-                        Core.atInfo(Log.UPDATER).log("🔍 Enviando comando de chequeo al servidor...");
+                        Core.atInfo(Log.UPDATER).log("Enviando comando de chequeo al servidor...");
                         sv.getExecutor().sendCommand(cfg.server.check_command);
                     }
                 }, 15000, timeMs, TimeUnit.MILLISECONDS);
@@ -95,7 +95,7 @@ public class Updater {
         } else if (serverTask != null) {
             serverTask.cancel(false);
             serverTask = null;
-            Core.atInfo(Log.UPDATER).log("🛑 Auto-Check Server detenido.");
+            Core.atInfo(Log.UPDATER).log("Auto-Check Server detenido.");
         }
     }
 
