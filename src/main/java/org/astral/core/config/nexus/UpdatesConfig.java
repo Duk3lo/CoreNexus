@@ -15,7 +15,7 @@ public class UpdatesConfig {
     }
 
     public static class GitHubUpdate {
-        public boolean enable = true;
+        public boolean enable = false;
         public String check_interval = "1D";
     }
 
@@ -26,7 +26,7 @@ public class UpdatesConfig {
         public String check_interval = "6H";
         public String check_command = "update check";
 
-        public String trigger_update_found = "Found version:";
+        public String trigger_update_found = "new version found:";
         public String download_command = "update download";
 
         public List<String> trigger_download_complete = new ArrayList<>(Arrays.asList("100%", "to apply download use"));
