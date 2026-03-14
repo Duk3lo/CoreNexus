@@ -1,5 +1,6 @@
 package org.astral.core.process;
 
+import org.astral.core.api.Updater;
 import org.astral.core.command.CommandExecutor;
 import org.astral.core.healing.HealthMonitor;
 import org.astral.core.logger.Core;
@@ -60,6 +61,7 @@ public final class Server {
         this.executor.run(line -> line, line -> {
             Core.atInfo(Log.SERVER).log(line);
             HealthMonitor.getInstance().processServerLog(line);
+            Updater.getInstance().processServerLogForUpdates(line);
         });
         HealthMonitor.getInstance().notifyServerStarted();
     }

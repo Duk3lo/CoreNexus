@@ -1,11 +1,13 @@
 package org.astral.core.command;
 
 import org.astral.core.Main;
+import org.astral.core.api.Updater;
 import org.astral.core.api.curseforge.CurseForgeAPI;
 import org.astral.core.api.github.GItHubApi;
 import org.astral.core.config.ConfigService;
 import org.astral.core.config.nexus.HealingConfig;
 import org.astral.core.config.nexus.NexusConfig;
+import org.astral.core.config.nexus.UpdatesConfig;
 import org.astral.core.file.WatcherManager;
 import org.astral.core.healing.HealthMonitor;
 import org.astral.core.logger.Core;
@@ -70,14 +72,11 @@ public class CommandTerminal {
         NexusConfig cfg = nexus.getConfig();
 
         switch (command) {
+            case "core-updater" -> handleUpdaterCommand(subCommand, extraArgs);
             case "core-health" -> handleHealthCommand(subCommand, extraArgs);
-
             case "core-curseforge" -> handleCurseForgeCommand(subCommand, extraArgs);
-
             case "core-github" -> handleGitHubCommand(subCommand, extraArgs);
-
             case "core-watcher" -> handleWatcherCommand(subCommand, extraArgs, nexus);
-
             case "core-setpathserver" -> {
                 if (subCommand.isEmpty()) {
                     Core.atWarning(Log.CONFIG).log("Uso: Core-SetPathServer <ruta>");
@@ -150,6 +149,56 @@ public class CommandTerminal {
                 }
             }
             default -> Core.atInfo(Log.HEALTH).log("Sub-comandos de Health: status, enable <true/false>");
+        }
+    }
+
+    private void handleUpdaterCommand(@NotNull String sub, @NotNull String args) {
+        UpdatesConfig cfg = WorkspaceSetup.getUpdates().getConfig();
+        if (cfg == null) return;
+        Updater updater = Updater.getInstance();
+        if (sub.equalsIgnoreCase("restart")) {
+            updater.restart();
+            Core.atInfo(Log.UPDATER).log("♻️ Todos los schedulers de actualización han sido reiniciados.");
+            return;
+        }
+        if (args.isEmpty()) {
+            Core.atWarning(Log.UPDATER).log("Uso: core-updater <enable|disable> <github|curseforge|server|all> O core-updater restart");
+            return;
+        }
+
+        boolean enable = sub.equalsIgnoreCase("enable");
+        String target = args.toLowerCase().trim();
+        boolean modified = false;
+
+        switch (target) {
+            case "github" -> {
+                cfg.github.enable = enable;
+                updater.updateGitHubTask(enable);
+                modified = true;
+            }
+            case "curseforge" -> {
+                cfg.curseforge.enable = enable;
+                updater.updateCurseForgeTask(enable);
+                modified = true;
+            }
+            case "server" -> {
+                cfg.server.enable_periodic_check = enable;
+                updater.updateServerTask(enable);
+                modified = true;
+            }
+            case "all" -> {
+                cfg.github.enable = enable;
+                cfg.curseforge.enable = enable;
+                cfg.server.enable_periodic_check = enable;
+                if (enable) updater.start(); else updater.stop();
+                modified = true;
+            }
+            default -> Core.atWarning(Log.UPDATER).log("Objetivo desconocido: " + target);
+        }
+
+        if (modified) {
+            WorkspaceSetup.getUpdates().save();
+            Core.atInfo(Log.UPDATER).log("✅ " + target.toUpperCase() + (enable ? " habilitado y guardado." : " deshabilitado y guardado."));
         }
     }
 
@@ -332,6 +381,8 @@ public class CommandTerminal {
 
     public static void printHelp(){
         Core.atInfo(Log.SYSTEM).log("--- 💡 CORE COMMANDS ---");
+        Core.atInfo(Log.UPDATER).log(">> core-updater <enable|disable> <github|curseforge|server|all>");
+        Core.atInfo(Log.UPDATER).log(">> core-updater restart (Aplica cambios del .yml globalmente)");
         Core.atInfo(Log.CURSEFORGE).log(">> core-curseforge <sync|add|remove|restore> <key|id|name>");
         Core.atInfo(Log.GITHUB).log(">> core-github <sync|add|remove|restore> <key|user/repo>");
         Core.atInfo(Log.WATCHER).log(">> core-watcher <list|add|remove|enable> <nombre>");
