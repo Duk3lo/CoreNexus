@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "org.astral.core"
-version = "0.0.1"
+version = "0.0.2"
 
 repositories {
     mavenCentral()
@@ -15,33 +15,33 @@ dependencies {
     implementation("org.yaml:snakeyaml:2.2")
     implementation("org.jline:jline:3.25.1")
     implementation("org.jline:jline-terminal-jansi:3.25.1")
-    implementation("org.jline:jline-terminal-ffm:3.25.1")
     implementation("org.kohsuke:github-api:1.327")
     testImplementation(platform("org.junit:junit-bom:5.10.0"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
+tasks.withType<JavaCompile> {
+    options.encoding = "UTF-8"
+}
+
 tasks.withType<JavaExec> {
-    jvmArgs("--enable-native-access=ALL-UNNAMED")
     standardInput = System.`in`
+    jvmArgs("--enable-native-access=ALL-UNNAMED")
 }
 
 tasks.shadowJar {
     archiveBaseName.set("CoreNexus")
     archiveClassifier.set("")
     manifest {
-        attributes["Main-Class"] = "org.astral.core.Main"
+        attributes(
+            "Main-Class" to "org.astral.core.Main",
+            "Enable-Native-Access" to "ALL-UNNAMED"
+        )
     }
     mergeServiceFiles()
 }
 
 tasks.test {
     useJUnitPlatform()
-}
-
-java {
-    toolchain {
-        languageVersion.set(JavaLanguageVersion.of(25))
-    }
 }

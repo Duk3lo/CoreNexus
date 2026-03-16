@@ -17,7 +17,7 @@ public final class Server {
     private final CommandExecutor<String> executor;
 
     public static void startServer(String path, String jar, String args) {
-        if (path == null || path.trim().isEmpty()) {
+        if (path == null || path.isBlank()) {
             Core.atError(Log.SERVER).log("No se puede iniciar el servidor: La ruta está vacía en la configuración.");
             return;
         }
@@ -42,33 +42,54 @@ public final class Server {
     }
 
     private Server(File directory, String jarName, String args) {
-        List<String> cmd = new ArrayList<>();
-        cmd.add("java");
-        cmd.add("-jar");
-        cmd.add(jarName);
-        if (args != null && !args.isEmpty()) {
-            String[] splitArgs = args.split(" ");
-            for (String arg : splitArgs) {
-                if (!arg.trim().isEmpty()) {
-                    cmd.add(arg);
-                }
-            }
-        }
+        List<String> cmd = getStrings(jarName, args);
+
         this.executor = new CommandExecutor<>(cmd, directory);
         this.executor.run(line -> line, rawLine -> {
-            String cleanLine = cleanAnsi(rawLine).trim();
+            if (rawLine == null || rawLine.isBlank()) return;
+            String repairedLine = repairBrokenAnsi(rawLine);
+            String visualLine = repairedLine + "\u001B[0m";
+            Core.atInfo(Log.SERVER).log(visualLine);
+            String cleanLine = cleanAnsi(repairedLine).strip();
             if (!cleanLine.isEmpty()) {
-                Core.atInfo(Log.SERVER).log(cleanLine);
                 HealthMonitor.getInstance().processServerLog(cleanLine);
                 Updater.getInstance().processServerLogForUpdates(cleanLine);
             }
         });
+
         HealthMonitor.getInstance().notifyServerStarted();
+    }
+
+    private static @NotNull List<String> getStrings(String jarName, String args) {
+        List<String> cmd = new ArrayList<>();
+        cmd.add("java");
+        cmd.add("-Dfile.encoding=UTF-8");
+        cmd.add("-Dstdout.encoding=UTF-8");
+        cmd.add("-Djansi.force=true");
+        cmd.add("-Dlog4j.skipJansi=false");
+        cmd.add("-Dlog4j2.skipJansi=false");
+        cmd.add("-Dterminal.jline=false");
+        cmd.add("-Dterminal.ansi=true");
+        cmd.add("-jar");
+        cmd.add(jarName);
+        if (args != null && !args.isBlank()) {
+            String[] splitArgs = args.split(" ");
+            for (String arg : splitArgs) {
+                if (!arg.isBlank()) {
+                    cmd.add(arg);
+                }
+            }
+        }
+        return cmd;
+    }
+
+    private @NotNull String repairBrokenAnsi(@NotNull String text) {
+        return text.replaceAll("(?<!\u001B)\\[(\\d{1,3}(?:;\\d{1,3})*[mK])", "\u001B[$1");
     }
 
     private @NotNull String cleanAnsi(String text) {
         if (text == null) return "";
-        return text.replaceAll("\u001B\\[[;\\d]*[A-Za-z]", "");
+        return text.replaceAll("\u001B\\[[;\\d]*[a-zA-Z]", "");
     }
 
     public CommandExecutor<String> getExecutor() {

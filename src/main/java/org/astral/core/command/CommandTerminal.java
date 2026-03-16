@@ -25,6 +25,7 @@ import org.jline.terminal.TerminalBuilder;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
@@ -42,13 +43,16 @@ public class CommandTerminal {
         try {
             terminal = TerminalBuilder.builder()
                     .system(true)
+                    .color(true)
+                    .encoding(StandardCharsets.UTF_8)
                     .build();
         } catch (Exception e) {
             try {
                 terminal = TerminalBuilder.builder()
                         .dumb(true)
+                        .encoding(StandardCharsets.UTF_8)
                         .build();
-                Core.atError(Log.SYSTEM).log("Advertencia: Usando terminal básica (Dumb Terminal) por falta de permisos nativos.");
+                Core.atError(Log.SYSTEM).log("Advertencia: Usando terminal básica (Dumb Terminal).");
             } catch (IOException ex) {
                 Core.atError(Log.SYSTEM).log("Error crítico: No se pudo crear ningún tipo de terminal.");
             }
@@ -71,14 +75,14 @@ public class CommandTerminal {
 
     public void connectProcess(@NotNull Process process) {
         this.currentProcess = process;
-        this.currentWriter = new PrintWriter(new OutputStreamWriter(process.getOutputStream()), true);
+        this.currentWriter = new PrintWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8), true);
         Core.atInfo(Log.SYSTEM).log("Terminal vinculada al nuevo proceso.");
     }
 
     public void startListening() {
         Thread terminalThread = new Thread(() -> {
             Core.atInfo(Log.SYSTEM).log("Consola avanzada activa.");
-            String prompt = "\u001B[32mcore > \u001B[0m";
+            String prompt = "\u001B[38;2;80;250;120mcore > \u001B[0m";
             while (true) {
                 try {
                     String input = reader.readLine(prompt);
