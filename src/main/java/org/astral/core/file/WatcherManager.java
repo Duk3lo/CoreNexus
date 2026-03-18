@@ -11,10 +11,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 
 public class WatcherManager {
     private static WatcherManager instance;
     private final Map<Path, DirectoryWatcher> watchers = new ConcurrentHashMap<>();
+    private final ScheduledExecutorService globalScheduler = Executors.newScheduledThreadPool(4);
 
     private WatcherManager() {}
 
@@ -41,7 +44,7 @@ public class WatcherManager {
         if (Files.exists(sourcePath)) {
             watchers.computeIfAbsent(sourcePath, k -> {
                 Core.atInfo(Log.WATCHER).log("Iniciando vigilancia ORIGEN: " + k.getFileName());
-                DirectoryWatcher watcher = new DirectoryWatcher(k, destPath, true, config, mainConfig, isMainWatcher);
+                DirectoryWatcher watcher = new DirectoryWatcher(k, destPath, true, config, mainConfig, isMainWatcher, globalScheduler);
                 watcher.start();
                 return watcher;
             });
@@ -53,7 +56,7 @@ public class WatcherManager {
             if (Files.exists(destPath)) {
                 watchers.computeIfAbsent(destPath, k -> {
                     Core.atInfo(Log.WATCHER).log("Iniciando vigilancia ESPEJO (Sync): " + k.getFileName());
-                    DirectoryWatcher syncWatcher = new DirectoryWatcher(k, sourcePath, false, config, mainConfig, false);
+                    DirectoryWatcher syncWatcher = new DirectoryWatcher(k, sourcePath, false, config, mainConfig, false, globalScheduler);
                     syncWatcher.start();
                     return syncWatcher;
                 });

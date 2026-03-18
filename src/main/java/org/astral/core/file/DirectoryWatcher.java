@@ -19,7 +19,7 @@ public class DirectoryWatcher {
     private volatile boolean running = true;
     private final String threadName;
     private Thread watcherThread;
-    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(4);
+
     private final ConcurrentHashMap<Path, Long> lastKnownSizes = new ConcurrentHashMap<>();
     private final Set<Path> checkingFiles = Collections.synchronizedSet(new HashSet<>());
     private final Set<Path> ignoreEvents = Collections.newSetFromMap(new ConcurrentHashMap<>());
@@ -30,14 +30,16 @@ public class DirectoryWatcher {
     private final NexusConfig.Watcher config;
     private final Set<String> allowedExtensions;
     private final boolean watchAll;
+    private final ScheduledExecutorService scheduler;
 
     public DirectoryWatcher(@NotNull Path directory, Path targetDirectory, boolean isSource,
-                            NexusConfig.@NotNull Watcher config, NexusConfig mainConfig, boolean isMainWatcher) {
+                            NexusConfig.@NotNull Watcher config, NexusConfig mainConfig, boolean isMainWatcher, ScheduledExecutorService sharedScheduler) {
         this.directory = directory.toAbsolutePath().normalize();
         this.targetDirectory = targetDirectory;
         this.config = config;
         this.mainConfig = mainConfig;
         this.isMainWatcher = isMainWatcher;
+        this.scheduler = sharedScheduler;
         this.folderName = directory.getFileName().toString();
         this.threadName = "Watcher-" + (isSource ? "Src-" : "Dest-") + folderName;
 
@@ -379,23 +381,14 @@ public class DirectoryWatcher {
             watcherThread.interrupt();
             Core.atInfo(Log.WATCHER, folderName).log("  -> Hilo de monitoreo interrumpido.");
         }
-        try {
-            int pendingTasks = checkingFiles.size();
-            scheduler.shutdown();
-
-            if (!scheduler.awaitTermination(2, TimeUnit.SECONDS)) {
-                scheduler.shutdownNow();
-            }
-            Core.atInfo(Log.WATCHER, folderName).log(String.format(
-                    "  -> Planificador detenido. (Tareas de estabilidad canceladas: %d)",
-                    pendingTasks
-            ));
-        } catch (InterruptedException e) {
-            scheduler.shutdownNow();
-        }
+        int pendingTasks = checkingFiles.size();
         checkingFiles.clear();
         lastKnownSizes.clear();
         ignoreEvents.clear();
-        Core.atInfo(Log.WATCHER, folderName).log("Vigilante [" + threadName + "] fuera de línea.");
+
+        Core.atInfo(Log.WATCHER, folderName).log(String.format(
+                "Vigilante [%s] fuera de línea. (Tareas locales canceladas/ignoradas: %d)",
+                threadName, pendingTasks
+        ));
     }
 }

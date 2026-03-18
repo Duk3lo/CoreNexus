@@ -525,6 +525,9 @@ public class CommandTerminal {
     }
 
     public void disconnectProcess() {
+        if (currentWriter != null) {
+            currentWriter.close();
+        }
         this.currentProcess = null;
         this.currentWriter = null;
         Core.atWarning(Log.SYSTEM).log("Terminal desconectada del proceso.");

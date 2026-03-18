@@ -100,9 +100,9 @@ public class Updater {
     }
 
     public void stop() {
-        updateCurseForgeTask(false);
-        updateGitHubTask(false);
-        updateServerTask(false);
+        if (curseForgeTask != null) { curseForgeTask.cancel(false); curseForgeTask = null; }
+        if (githubTask != null) { githubTask.cancel(false); githubTask = null; }
+        if (serverTask != null) { serverTask.cancel(false); serverTask = null; }
     }
 
     public void restart() {

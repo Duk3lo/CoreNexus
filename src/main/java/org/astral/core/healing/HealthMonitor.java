@@ -27,6 +27,9 @@ public class HealthMonitor {
     private long serverStartTime = 0;
     private int tpsStrikes = 0;
 
+    private long lastCheckTime = 0;
+    private long currentIntervalMillis = 0;
+
     private HealthMonitor() {}
 
     public static HealthMonitor getInstance() {
@@ -48,13 +51,16 @@ public class HealthMonitor {
         long intervalMillis = Parser.parseTime(config.check_interval);
         if (intervalMillis <= 0) intervalMillis = 60000;
 
+        this.currentIntervalMillis = intervalMillis;
+        this.lastCheckTime = System.currentTimeMillis();
+
         scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "Health-Monitor-Thread");
             t.setDaemon(true);
             return t;
         });
 
-        Core.atInfo(Log.HEALTH).log("Monitor iniciado. Chequeos cada " + (intervalMillis / 1000) + " segundos.");
+        Core.atInfo(Log.HEALTH).log("Monitor iniciado. Chequeos cada " + formatTime(intervalMillis / 1000) + ".");
         scheduler.scheduleAtFixedRate(this::performCheck, intervalMillis, intervalMillis, TimeUnit.MILLISECONDS);
     }
 
@@ -66,6 +72,8 @@ public class HealthMonitor {
     }
 
     private void performCheck() {
+        this.lastCheckTime = System.currentTimeMillis();
+
         try {
             HealingConfig config = WorkspaceSetup.getHealing().getConfig();
             if (config == null || !config.enable || serverStartTime <= 0) return;
@@ -147,22 +155,32 @@ public class HealthMonitor {
 
     public void printHealthStatus() {
         Core.atInfo(Log.HEALTH).log("=== Estado de Salud del Sistema ===");
-        Runtime runtime = Runtime.getRuntime();
-        long usedMemoryMb = (runtime.totalMemory() - runtime.freeMemory()) / 1048576L;
-        long maxMemoryMb = runtime.maxMemory() / 1048576L;
+        long myPid = ProcessHandle.current().pid();
+        String appRawMem = getProcessMemoryUsage(myPid);
+        String appFormattedMem = formatMemory(appRawMem);
 
         OperatingSystemMXBean osBean = ManagementFactory.getOperatingSystemMXBean();
         double cpuLoad = osBean.getSystemLoadAverage();
 
-        Core.atInfo(Log.HEALTH).log("[CORE] RAM Usada : " + usedMemoryMb + "MB / " + maxMemoryMb + "MB");
-        Core.atInfo(Log.HEALTH).log("[CORE] Carga CPU : " + (cpuLoad < 0 ? "No disponible" : String.format("%.2f", cpuLoad)));
+        int threadCount = ManagementFactory.getThreadMXBean().getThreadCount();
+
+        Core.atInfo(Log.HEALTH).log("[APP] RAM Core        : " + appFormattedMem + " (Real OS)");
+        Core.atInfo(Log.HEALTH).log("[APP] Carga CPU       : " + (cpuLoad < 0 ? "No disponible" : String.format("%.2f", cpuLoad)));
+        Core.atInfo(Log.HEALTH).log("[APP] Hilos Activos   : " + threadCount);
 
         HealingConfig config = WorkspaceSetup.getHealing().getConfig();
         boolean isEnabled = config != null && config.enable;
-        Core.atInfo(Log.HEALTH).log("[MONITOR] Estado  : " + (isEnabled ? "✅ ACTIVO" : "❌ APAGADO"));
+        Core.atInfo(Log.HEALTH).log("[MONITOR] Estado      : " + (isEnabled ? "✅ ACTIVO" : "❌ APAGADO"));
+
         if (isEnabled) {
-            Core.atInfo(Log.HEALTH).log("[MONITOR] Fallos TPS: " + tpsStrikes + " / " + config.max_strikes);
+            Core.atInfo(Log.HEALTH).log("[MONITOR] Fallos TPS  : " + tpsStrikes + " / " + config.max_strikes);
+
+            long remainingMillis = (lastCheckTime + currentIntervalMillis) - System.currentTimeMillis();
+            if (remainingMillis < 0) remainingMillis = 0;
+
+            Core.atInfo(Log.HEALTH).log("[MONITOR] Prox. Check : en " + formatTime(remainingMillis / 1000));
         }
+
         Server server = Server.getInstance();
         if (server != null && server.getExecutor().getProcess().isAlive()) {
             Process p = server.getExecutor().getProcess();
@@ -170,30 +188,30 @@ public class HealthMonitor {
             String commandName = handle.info().command().orElse("Desconocido");
             String simpleName = commandName.substring(commandName.lastIndexOf(File.separator) + 1);
 
-            String rawMem = getServerMemoryUsage(handle.pid());
-            String formattedMem = formatMemory(rawMem);
+            String serverRawMem = getProcessMemoryUsage(handle.pid());
+            String serverFormattedMem = formatMemory(serverRawMem);
 
             long cpuSeconds = handle.info().totalCpuDuration().map(Duration::toSeconds).orElse(0L);
-            String cpuUsage = getServerCpuUsage(handle.pid());
+            String cpuUsage = getProcessCpuUsage(handle.pid());
 
-            Core.atInfo(Log.HEALTH).log("[SERVER] Proceso  : " + simpleName + " (PID: " + handle.pid() + ")");
-            Core.atInfo(Log.HEALTH).log("[SERVER] RAM Proc : " + formattedMem);
-            Core.atInfo(Log.HEALTH).log("[SERVER] CPU Uso  : " + cpuUsage);
-            Core.atInfo(Log.HEALTH).log("[SERVER] CPU Tiempo Total: " + cpuSeconds + "s");
+            Core.atInfo(Log.HEALTH).log("[SERVER] Proceso      : " + simpleName + " (PID: " + handle.pid() + ")");
+            Core.atInfo(Log.HEALTH).log("[SERVER] RAM Server   : " + serverFormattedMem);
+            Core.atInfo(Log.HEALTH).log("[SERVER] CPU Uso      : " + cpuUsage);
+            Core.atInfo(Log.HEALTH).log("[SERVER] CPU Tiempo   : " + cpuSeconds + "s");
 
             if (serverStartTime > 0) {
-                long uptime = (System.currentTimeMillis() - serverStartTime) / 1000;
-                Core.atInfo(Log.HEALTH).log("[SERVER] Uptime   : " + (uptime/3600) + "h " + ((uptime%3600)/60) + "m");
+                long uptimeSecs = (System.currentTimeMillis() - serverStartTime) / 1000;
+                Core.atInfo(Log.HEALTH).log("[SERVER] Uptime       : " + formatTime(uptimeSecs));
             }
             Core.atInfo(Log.HEALTH).log("[SERVER] Pidiendo TPS en vivo...");
             server.getExecutor().sendCommand("world perf");
         } else {
-            Core.atWarning(Log.HEALTH).log("[SERVER] Estado   : ❌ APAGADO");
+            Core.atWarning(Log.HEALTH).log("[SERVER] Estado       : ❌ APAGADO");
         }
         Core.atInfo(Log.HEALTH).log("===================================");
     }
 
-    private String getServerCpuUsage(long pid) {
+    private String getProcessCpuUsage(long pid) {
         String os = System.getProperty("os.name").toLowerCase();
         String pidStr = String.valueOf(pid);
 
@@ -237,13 +255,17 @@ public class HealthMonitor {
         return command;
     }
 
-    private String getServerMemoryUsage(long pid) {
+    private String getProcessMemoryUsage(long pid) {
         String pidStr = String.valueOf(pid);
         List<String> command = new ArrayList<>();
-        if (System.getProperty("os.name").toLowerCase().contains("win")) {
+        boolean isWin = System.getProperty("os.name").toLowerCase().contains("win");
+
+        if (isWin) {
             command.add("tasklist");
             command.add("/FI");
             command.add("PID eq " + pidStr);
+            command.add("/FO");
+            command.add("CSV");
             command.add("/NH");
         } else {
             command.add("ps");
@@ -257,13 +279,15 @@ public class HealthMonitor {
             Process p = pb.start();
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(p.getInputStream()))) {
                 String line = reader.readLine();
-                if (line != null) {
-                    String result = line.trim();
-                    if (System.getProperty("os.name").toLowerCase().contains("win")) {
-                        String[] parts = result.split("\\s+");
-                        if (parts.length > 4) return parts[4];
+                if (line != null && !line.trim().isEmpty()) {
+                    if (isWin) {
+                        String[] parts = line.split("\",\"");
+                        if (parts.length > 0) {
+                            return parts[parts.length - 1].replaceAll("[^0-9]", "");
+                        }
+                    } else {
+                        return line.trim();
                     }
-                    return result;
                 }
             }
         } catch (Exception e) {
@@ -273,9 +297,9 @@ public class HealthMonitor {
     }
 
     private @NotNull String formatMemory(String kbStr) {
-        if (kbStr == null || kbStr.equals("N/A")) return "N/A";
+        if (kbStr == null || kbStr.equals("N/A") || kbStr.isEmpty()) return "N/A";
         try {
-            long kb = Long.parseLong(kbStr.replaceAll("[^0-9]", ""));
+            long kb = Long.parseLong(kbStr);
 
             if (kb >= 1024 * 1024) {
                 return String.format("%.2f GB", kb / (1024.0 * 1024.0));
@@ -285,8 +309,24 @@ public class HealthMonitor {
                 return kb + " KB";
             }
         } catch (NumberFormatException e) {
-            return kbStr + " KB";
+            return "N/A";
         }
     }
 
+    private @NotNull String formatTime(long totalSecs) {
+        if (totalSecs <= 0) return "0s";
+
+        long d = totalSecs / 86400;
+        long h = (totalSecs % 86400) / 3600;
+        long m = (totalSecs % 3600) / 60;
+        long s = totalSecs % 60;
+
+        StringBuilder sb = new StringBuilder();
+        if (d > 0) sb.append(d).append("d ");
+        if (h > 0) sb.append(h).append("h ");
+        if (m > 0) sb.append(m).append("m ");
+        sb.append(s).append("s");
+
+        return sb.toString().trim();
+    }
 }
