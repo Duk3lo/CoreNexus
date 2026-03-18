@@ -155,7 +155,11 @@ public class HealthMonitor {
 
     public void printHealthStatus() {
         Core.atInfo(Log.HEALTH).log("=== Estado de Salud del Sistema ===");
-        long myPid = ProcessHandle.current().pid();
+        ProcessHandle myHandle = ProcessHandle.current();
+        long myPid = myHandle.pid();
+        String appName = myHandle.info().command()
+                .map(cmd -> cmd.substring(cmd.lastIndexOf(File.separator) + 1))
+                .orElse("AstralCore");
         String appRawMem = getProcessMemoryUsage(myPid);
         String appFormattedMem = formatMemory(appRawMem);
 
@@ -164,6 +168,7 @@ public class HealthMonitor {
 
         int threadCount = ManagementFactory.getThreadMXBean().getThreadCount();
 
+        Core.atInfo(Log.HEALTH).log("[APP] Proceso      : " + appName + " (PID: " + myPid + ")");
         Core.atInfo(Log.HEALTH).log("[APP] RAM Core        : " + appFormattedMem + " (Real OS)");
         Core.atInfo(Log.HEALTH).log("[APP] Carga CPU       : " + (cpuLoad < 0 ? "No disponible" : String.format("%.2f", cpuLoad)));
         Core.atInfo(Log.HEALTH).log("[APP] Hilos Activos   : " + threadCount);
