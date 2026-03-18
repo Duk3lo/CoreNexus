@@ -63,13 +63,6 @@ public final class Server {
     private static @NotNull List<String> getStrings(String jarName, String args) {
         List<String> cmd = new ArrayList<>();
         cmd.add("java");
-        cmd.add("-Dfile.encoding=UTF-8");
-        cmd.add("-Dstdout.encoding=UTF-8");
-        cmd.add("-Djansi.force=true");
-        cmd.add("-Dlog4j.skipJansi=false");
-        cmd.add("-Dlog4j2.skipJansi=false");
-        cmd.add("-Dterminal.jline=false");
-        cmd.add("-Dterminal.ansi=true");
         cmd.add("-jar");
         cmd.add(jarName);
         if (args != null && !args.isBlank()) {
