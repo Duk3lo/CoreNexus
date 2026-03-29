@@ -168,7 +168,7 @@ public class HealthMonitor {
 
         int threadCount = ManagementFactory.getThreadMXBean().getThreadCount();
 
-        Core.atInfo(Log.HEALTH).log("[APP] Proceso      : " + appName + " (PID: " + myPid + ")");
+        Core.atInfo(Log.HEALTH).log("[APP] Proceso         : " + appName + " (PID: " + myPid + ")");
         Core.atInfo(Log.HEALTH).log("[APP] RAM Core        : " + appFormattedMem + " (Real OS)");
         Core.atInfo(Log.HEALTH).log("[APP] Carga CPU       : " + (cpuLoad < 0 ? "No disponible" : String.format("%.2f", cpuLoad)));
         Core.atInfo(Log.HEALTH).log("[APP] Hilos Activos   : " + threadCount);
