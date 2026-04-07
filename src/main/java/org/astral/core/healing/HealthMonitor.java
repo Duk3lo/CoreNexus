@@ -17,7 +17,6 @@ import java.lang.management.OperatingSystemMXBean;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
@@ -38,9 +37,7 @@ public class HealthMonitor {
     }
 
     public void start() {
-        if (scheduler != null && !scheduler.isShutdown()) {
-            return;
-        }
+        if (scheduler != null && !scheduler.isShutdown()) return;
 
         HealingConfig config = WorkspaceSetup.getHealing().getConfig();
         if (config == null || !config.enable) {
@@ -49,24 +46,26 @@ public class HealthMonitor {
         }
 
         long intervalMillis = Parser.parseTime(config.check_interval);
-        if (intervalMillis <= 0) intervalMillis = 60000;
+        if (intervalMillis <= 0) intervalMillis = 60_000L;
 
         this.currentIntervalMillis = intervalMillis;
         this.lastCheckTime = System.currentTimeMillis();
 
-        scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+        scheduler = new java.util.concurrent.ScheduledThreadPoolExecutor(1, r -> {
             Thread t = new Thread(r, "Health-Monitor-Thread");
             t.setDaemon(true);
             return t;
         });
+        ((java.util.concurrent.ScheduledThreadPoolExecutor) scheduler).setRemoveOnCancelPolicy(true);
 
         Core.atInfo(Log.HEALTH).log("Monitor iniciado. Chequeos cada " + formatTime(intervalMillis / 1000) + ".");
-        scheduler.scheduleAtFixedRate(this::performCheck, intervalMillis, intervalMillis, TimeUnit.MILLISECONDS);
+        scheduler.scheduleWithFixedDelay(this::performCheck, intervalMillis, intervalMillis, TimeUnit.MILLISECONDS);
     }
 
     public void stop() {
-        if (scheduler != null && !scheduler.isShutdown()) {
+        if (scheduler != null) {
             scheduler.shutdownNow();
+            scheduler = null;
             Core.atInfo(Log.HEALTH).log("Monitor de salud detenido.");
         }
     }
@@ -109,42 +108,42 @@ public class HealthMonitor {
 
     public void processServerLog(String line) {
         HealingConfig config = WorkspaceSetup.getHealing().getConfig();
-        if (config == null || !config.enable) return;
+        if (config == null || !config.enable || line == null) return;
 
-        if (line.contains("TPS (1 min):")) {
-            try {
-                String[] parts = line.split("Avg:");
-                if (parts.length > 1) {
-                    String avgStr = parts[1].split(",")[0].trim();
-                    double avgTps = Double.parseDouble(avgStr);
+        if (!line.contains("TPS (1 min):")) return;
 
-                    if (avgTps < config.min_tps_threshold) {
-                        tpsStrikes++;
-                        Core.atWarning(Log.HEALTH).log("¡ALERTA! TPS promedio bajó a " + avgTps + ". Advertencia " + tpsStrikes + "/" + config.max_strikes);
+        try {
+            int idx = line.indexOf("Avg:");
+            if (idx < 0) return;
 
-                        if (tpsStrikes >= config.max_strikes) {
-                            Core.atError(Log.HEALTH).log("Límite de fallos de rendimiento alcanzado. Iniciando reinicio de emergencia...");
-                            executeRestart();
-                        }
-                    } else {
-                        if (tpsStrikes > 0) {
-                            Core.atInfo(Log.HEALTH).log("Rendimiento estabilizado (" + avgTps + " TPS). Alertas canceladas.");
-                            tpsStrikes = 0;
-                        }
-                    }
+            int comma = line.indexOf(',', idx);
+            String avgStr = (comma > idx)
+                    ? line.substring(idx + 4, comma).trim()
+                    : line.substring(idx + 4).trim();
+
+            double avgTps = Double.parseDouble(avgStr);
+
+            if (avgTps < config.min_tps_threshold) {
+                tpsStrikes++;
+                Core.atWarning(Log.HEALTH).log("¡ALERTA! TPS promedio bajó a " + avgTps + ". Advertencia " + tpsStrikes + "/" + config.max_strikes);
+                if (tpsStrikes >= config.max_strikes) {
+                    Core.atError(Log.HEALTH).log("Límite de fallos de rendimiento alcanzado. Iniciando reinicio de emergencia...");
+                    executeRestart();
                 }
-            } catch (Exception ignored) {}
+            } else if (tpsStrikes > 0) {
+                Core.atInfo(Log.HEALTH).log("Rendimiento estabilizado (" + avgTps + " TPS). Alertas canceladas.");
+                tpsStrikes = 0;
+            }
+        } catch (Exception ignored) {
         }
     }
 
     private void executeRestart() {
-        this.serverStartTime = 0;
-        this.tpsStrikes = 0;
+        serverStartTime = 0;
+        tpsStrikes = 0;
 
         Server server = Server.getInstance();
-        if (server != null) {
-            server.stopServer();
-        }
+        if (server != null) server.stopServer();
 
         NexusConfig cfg = WorkspaceSetup.getNexus().getConfig();
         if (cfg != null) {

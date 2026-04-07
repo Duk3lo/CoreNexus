@@ -157,8 +157,9 @@ public class CommandTerminal {
                 Core.atInfo(Log.SYSTEM).log("Reiniciando sistema integral...");
                 if (Server.getInstance() != null) Server.getInstance().stopServer();
                 WatcherManager.getInstance().stopAll();
-                HealthMonitor.getInstance().stop();
                 WorkspaceSetup.getNexus().load();
+                WatcherManager.getInstance().resetAfterReload();
+                HealthMonitor.getInstance().stop();
                 WorkspaceSetup.getGithub().load();
                 WorkspaceSetup.getCurseForge().load();
                 WorkspaceSetup.getHealing().load();

@@ -4,92 +4,127 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jline.reader.LineReader;
 
-import java.awt.Color;
 import java.io.PrintWriter;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 
 public final class Core {
+
     private static final String RESET = "\u001B[0m";
     private static final String CLEAR_LINE = "\u001B[2K\r";
+    private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm:ss");
 
-    private static LineReader lineReader;
-    private static PrintWriter terminalWriter;
+    private static volatile LineReader lineReader;
+    private static volatile PrintWriter terminalWriter;
 
-    public static void setLineReader(LineReader reader) {
-        lineReader = reader;
-        if (reader != null) {
-            terminalWriter = reader.getTerminal().writer();
-        } else {
-            terminalWriter = null;
-        }
+    private Core() {
     }
 
-    public static @NotNull LogBuilder atInfo(Log context) { return new LogBuilder(context, null, "INFO"); }
-    public static @NotNull LogBuilder atWarning(Log context) { return new LogBuilder(context, null, "WARN"); }
-    public static @NotNull LogBuilder atError(Log context) { return new LogBuilder(context, null, "ERROR"); }
+    public static void setLineReader(@Nullable LineReader reader) {
+        lineReader = reader;
+        terminalWriter = (reader != null) ? reader.getTerminal().writer() : null;
+    }
 
-    public static @NotNull LogBuilder atInfo(Log context, String subContext) { return new LogBuilder(context, subContext, "INFO"); }
-    public static @NotNull LogBuilder atWarning(Log context, String subContext) { return new LogBuilder(context, subContext, "WARN"); }
-    public static @NotNull LogBuilder atError(Log context, String subContext) { return new LogBuilder(context, subContext, "ERROR"); }
+    public static @NotNull LogBuilder atInfo(@NotNull Log context) {
+        return new LogBuilder(context, null, Level.INFO);
+    }
 
-    public static class LogBuilder {
+    public static @NotNull LogBuilder atWarning(@NotNull Log context) {
+        return new LogBuilder(context, null, Level.WARN);
+    }
+
+    public static @NotNull LogBuilder atError(@NotNull Log context) {
+        return new LogBuilder(context, null, Level.ERROR);
+    }
+
+    public static @NotNull LogBuilder atInfo(@NotNull Log context, @Nullable String subContext) {
+        return new LogBuilder(context, subContext, Level.INFO);
+    }
+
+    public static @NotNull LogBuilder atWarning(@NotNull Log context, @Nullable String subContext) {
+        return new LogBuilder(context, subContext, Level.WARN);
+    }
+
+    public static @NotNull LogBuilder atError(@NotNull Log context, @Nullable String subContext) {
+        return new LogBuilder(context, subContext, Level.ERROR);
+    }
+
+    public static final class LogBuilder {
+
         private final Log context;
         private final String subContext;
-        private final String level;
-        private final DateTimeFormatter timeFormat = DateTimeFormatter.ofPattern("HH:mm:ss");
+        private final Level level;
 
-        private LogBuilder(Log context, @Nullable String subContext, String level) {
+        private LogBuilder(@NotNull Log context, @Nullable String subContext, @NotNull Level level) {
             this.context = context;
             this.subContext = subContext;
             this.level = level;
         }
 
-        public void log(String message) { print(message, false); }
+        public void log(@NotNull String message) {
+            String time = LocalTime.now().format(TIME_FORMAT);
 
-        public void update(String message) { print(message, true); }
+            String label = (subContext == null || subContext.isBlank())
+                    ? context.getLabel()
+                    : context.getLabel() + "/" + subContext;
 
-        private void print(String message, boolean isUpdate) {
-            if (message == null || message.isBlank()) {
-                return;
-            }
-            String time = LocalTime.now().format(timeFormat);
-            String fullLabel = (subContext == null) ? context.label : context.label + ":" + subContext;
+            String out = '[' + time + "] " +
+                    context.getAnsi() + '[' + label + ']' + RESET +
+                    " [" + level.getAnsi() + level.name() + RESET + "]: " +
+                    message;
 
-            Color levelColor = switch (level) {
-                case "ERROR" -> Color.RED;
-                case "WARN" -> Color.YELLOW;
-                default -> context.color;
-            };
+            writeLine(out);
+        }
 
-            String contextAnsi = toAnsi(context.color);
-            String levelAnsi = toAnsi(levelColor);
-            String prefix = isUpdate ? CLEAR_LINE : "";
-            String cleanMessage = message.stripTrailing();
+        public void update(@NotNull String message) {
+            String time = LocalTime.now().format(TIME_FORMAT);
 
-            String formatted = String.format("%s[%s] %s[%s]%s [%s%s%s]: %s",
-                    prefix, time, contextAnsi, fullLabel, RESET,
-                    levelAnsi, level, RESET, cleanMessage);
+            String out = CLEAR_LINE +
+                    '[' + time + "] " +
+                    message;
 
-            if (lineReader != null && terminalWriter != null) {
-                if (isUpdate) {
-                    terminalWriter.print(formatted);
-                    terminalWriter.flush();
-                } else {
-                    lineReader.printAbove(formatted);
-                }
+            writeInline(out);
+        }
+
+        private void writeLine(String formatted) {
+            PrintWriter writer = terminalWriter;
+            if (lineReader != null && writer != null) {
+                writer.println(formatted);
+                writer.flush();
             } else {
-                if (isUpdate) {
-                    System.out.print(formatted);
-                    System.out.flush();
-                } else {
-                    System.out.println(formatted);
-                }
+                System.out.println(formatted);
             }
         }
 
-        private @NotNull String toAnsi(@NotNull Color color) {
-            return String.format("\u001B[38;2;%d;%d;%dm", color.getRed(), color.getGreen(), color.getBlue());
+        private void writeInline(String formatted) {
+            PrintWriter writer = terminalWriter;
+            if (lineReader != null && writer != null) {
+                writer.print(formatted);
+                writer.flush();
+            } else {
+                System.out.print(formatted);
+                System.out.flush();
+            }
         }
+    }
+
+    private enum Level {
+        INFO(ansi(120, 220, 120)),
+        WARN(ansi(255, 200, 80)),
+        ERROR(ansi(255, 90, 90));
+
+        private final String ansi;
+
+        Level(String ansi) {
+            this.ansi = ansi;
+        }
+
+        public String getAnsi() {
+            return ansi;
+        }
+    }
+
+    private static @NotNull String ansi(int r, int g, int b) {
+        return "\u001B[38;2;" + r + ';' + g + ';' + b + 'm';
     }
 }
